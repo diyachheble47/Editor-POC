@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { BLOCK_REGISTRY } from '../editor/blockRegistry'
+import { BLOCK_REGISTRY, CATEGORY_ORDER, CATEGORY_LABELS } from '../editor/blockRegistry'
 
 export type RightTab = 'insert' | 'ai' | 'stem' | 'media'
 
@@ -50,6 +50,7 @@ export function RightPanel({ isOpen, activeTab, onTabChange }: RightPanelProps) 
 
 /* ── Tab button ──────────────────────────────────────────────── */
 
+
 function PanelTab({
   id, label, active, onClick, children,
 }: {
@@ -76,39 +77,43 @@ function PanelTab({
 
 /* ── INSERT PANEL ───────────────────────────────────────────── */
 
-const CATEGORY_LABELS: Record<string, string> = {
-  text: 'Text Blocks',
-  chemistry: 'Chemistry',
-}
-
 function InsertPanel() {
   const [editor] = useLexicalComposerContext()
-  const categories = Array.from(new Set(BLOCK_REGISTRY.map(b => b.category)))
 
   return (
     <div className="insert-panel">
-      {categories.map(cat => {
+      {CATEGORY_ORDER.map(cat => {
         const blocks = BLOCK_REGISTRY.filter(b => b.category === cat)
+        if (blocks.length === 0) return null
         return (
           <div key={cat} className="rpanel-block-group">
-            <div className="rpanel-section-header">
-              {CATEGORY_LABELS[cat] ?? cat}
-            </div>
-            {blocks.map(block => (
-              <button
-                key={block.key}
-                type="button"
-                className="rpanel-block-btn"
-                onClick={() => block.insert(editor)}
-                title={block.description}
-              >
-                <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
-                <span className="rpanel-block-info">
-                  <span className="rpanel-block-label">{block.label}</span>
-                  <span className="rpanel-block-desc">{block.description}</span>
-                </span>
-              </button>
-            ))}
+            <div className="rpanel-section-header">{CATEGORY_LABELS[cat]}</div>
+            {blocks.map(block =>
+              block.status === 'available' ? (
+                <button
+                  key={block.key}
+                  type="button"
+                  className="rpanel-block-btn"
+                  onClick={() => block.insert(editor)}
+                  title={block.description}
+                >
+                  <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
+                  <span className="rpanel-block-info">
+                    <span className="rpanel-block-label">{block.label}</span>
+                    <span className="rpanel-block-desc">{block.description}</span>
+                  </span>
+                </button>
+              ) : (
+                <div key={block.key} className="rpanel-coming-item">
+                  <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
+                  <span className="rpanel-block-info">
+                    <span className="rpanel-block-label">{block.label}</span>
+                    <span className="rpanel-block-desc">{block.description}</span>
+                  </span>
+                  <span className="badge-soon">Soon</span>
+                </div>
+              )
+            )}
           </div>
         )
       })}
@@ -154,62 +159,37 @@ function AIPanel() {
 
 function STEMPanel() {
   const [editor] = useLexicalComposerContext()
-
-  const equationBlock = BLOCK_REGISTRY.find(b => b.key === 'equation')
-  const moleculeBlock = BLOCK_REGISTRY.find(b => b.key === 'molecule3d')
+  const stemBlocks = BLOCK_REGISTRY.filter(b => b.category === 'stem')
 
   return (
     <div className="rpanel-stem-panel">
-
-      <div className="rpanel-section-header" style={{ paddingTop: 0 }}>Chemistry</div>
-
-      {equationBlock && (
-        <button type="button" className="rpanel-block-btn" onClick={() => equationBlock.insert(editor)}>
-          <span className="rpanel-block-icon" aria-hidden="true">{equationBlock.icon}</span>
-          <span className="rpanel-block-info">
-            <span className="rpanel-block-label">{equationBlock.label}</span>
-            <span className="rpanel-block-desc">{equationBlock.description}</span>
-          </span>
-        </button>
+      <div className="rpanel-section-header" style={{ paddingTop: 0 }}>STEM Blocks</div>
+      {stemBlocks.map(block =>
+        block.status === 'available' ? (
+          <button
+            key={block.key}
+            type="button"
+            className="rpanel-block-btn"
+            onClick={() => block.insert(editor)}
+            title={block.description}
+          >
+            <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
+            <span className="rpanel-block-info">
+              <span className="rpanel-block-label">{block.label}</span>
+              <span className="rpanel-block-desc">{block.description}</span>
+            </span>
+          </button>
+        ) : (
+          <div key={block.key} className="rpanel-coming-item">
+            <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
+            <span className="rpanel-block-info">
+              <span className="rpanel-block-label">{block.label}</span>
+              <span className="rpanel-block-desc">{block.description}</span>
+            </span>
+            <span className="badge-soon">Soon</span>
+          </div>
+        )
       )}
-
-      {moleculeBlock && (
-        <button type="button" className="rpanel-block-btn" onClick={() => moleculeBlock.insert(editor)}>
-          <span className="rpanel-block-icon" aria-hidden="true">{moleculeBlock.icon}</span>
-          <span className="rpanel-block-info">
-            <span className="rpanel-block-label">{moleculeBlock.label}</span>
-            <span className="rpanel-block-desc">{moleculeBlock.description}</span>
-          </span>
-        </button>
-      )}
-
-      <div className="rpanel-section-header">Math &amp; Equations</div>
-
-      <div className="rpanel-coming-item">
-        <span className="rpanel-block-icon" aria-hidden="true">Σ</span>
-        <span className="rpanel-block-info">
-          <span className="rpanel-block-label">Math Equation</span>
-          <span className="rpanel-block-desc">LaTeX / KaTeX expression</span>
-        </span>
-        <span className="badge-soon">Soon</span>
-      </div>
-
-      <div className="rpanel-section-header">Visualizations</div>
-
-      {[
-        { icon: '📊', label: 'Diagram', desc: 'Concept map, flowchart' },
-        { icon: '🔬', label: 'Simulation', desc: 'Interactive physics / chemistry' },
-      ].map(item => (
-        <div key={item.label} className="rpanel-coming-item">
-          <span className="rpanel-block-icon" aria-hidden="true">{item.icon}</span>
-          <span className="rpanel-block-info">
-            <span className="rpanel-block-label">{item.label}</span>
-            <span className="rpanel-block-desc">{item.desc}</span>
-          </span>
-          <span className="badge-soon">Soon</span>
-        </div>
-      ))}
-
     </div>
   )
 }
@@ -217,23 +197,17 @@ function STEMPanel() {
 /* ── MEDIA PANEL ────────────────────────────────────────────── */
 
 function MediaPanel() {
-  const ITEMS = [
-    { icon: '🖼', label: 'Image', desc: 'JPEG, PNG, WebP, SVG' },
-    { icon: '🎥', label: 'Video', desc: 'MP4, WebM' },
-    { icon: '🔊', label: 'Audio', desc: 'MP3, WAV, OGG' },
-    { icon: '📎', label: 'File', desc: 'Any file type' },
-    { icon: '🔗', label: 'Embed', desc: 'URL or iframe' },
-  ]
+  const mediaBlocks = BLOCK_REGISTRY.filter(b => b.category === 'media')
 
   return (
     <div className="rpanel-media-panel">
-      <div className="rpanel-section-header" style={{ paddingTop: 0 }}>Media</div>
-      {ITEMS.map(item => (
-        <div key={item.label} className="rpanel-coming-item">
-          <span className="rpanel-block-icon" aria-hidden="true">{item.icon}</span>
+      <div className="rpanel-section-header" style={{ paddingTop: 0 }}>Media Blocks</div>
+      {mediaBlocks.map(block => (
+        <div key={block.key} className="rpanel-coming-item">
+          <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
           <span className="rpanel-block-info">
-            <span className="rpanel-block-label">{item.label}</span>
-            <span className="rpanel-block-desc">{item.desc}</span>
+            <span className="rpanel-block-label">{block.label}</span>
+            <span className="rpanel-block-desc">{block.description}</span>
           </span>
           <span className="badge-soon">Soon</span>
         </div>

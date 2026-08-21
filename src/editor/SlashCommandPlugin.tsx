@@ -6,7 +6,12 @@ import {
   useBasicTypeaheadTriggerMatch,
 } from '@lexical/react/LexicalTypeaheadMenuPlugin'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { BLOCK_REGISTRY, type BlockDef } from './blockRegistry'
+import {
+  BLOCK_REGISTRY,
+  CATEGORY_ORDER,
+  CATEGORY_LABELS,
+  type BlockDef,
+} from './blockRegistry'
 
 class SlashOption extends MenuOption {
   block: BlockDef
@@ -16,25 +21,33 @@ class SlashOption extends MenuOption {
   }
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  text: 'Text',
-  chemistry: 'Chemistry',
-}
-
 export function SlashCommandPlugin() {
   const [editor] = useLexicalComposerContext()
   const [queryString, setQueryString] = useState<string | null>(null)
 
   const checkForTriggerMatch = useBasicTypeaheadTriggerMatch('/', { minLength: 0 })
 
+  // Only available blocks go into options — these drive keyboard navigation
   const options = useMemo(() => {
-    const slashBlocks = BLOCK_REGISTRY.filter((b) => b.inSlash)
+    const available = BLOCK_REGISTRY.filter(b => b.inSlash && b.status === 'available')
     const filtered = queryString
-      ? slashBlocks.filter((b) =>
-          b.label.toLowerCase().includes(queryString.toLowerCase()),
+      ? available.filter(b =>
+          b.label.toLowerCase().includes(queryString.toLowerCase()) ||
+          b.keywords?.some(k => k.includes(queryString.toLowerCase()))
         )
-      : slashBlocks
-    return filtered.map((b) => new SlashOption(b))
+      : available
+    return filtered.map(b => new SlashOption(b))
+  }, [queryString])
+
+  // All blocks matching query — used for rendering (includes coming-soon)
+  const allMatchingBlocks = useMemo(() => {
+    const all = BLOCK_REGISTRY.filter(b => b.inSlash)
+    return queryString
+      ? all.filter(b =>
+          b.label.toLowerCase().includes(queryString.toLowerCase()) ||
+          b.keywords?.some(k => k.includes(queryString.toLowerCase()))
+        )
+      : all
   }, [queryString])
 
   const onSelectOption = useCallback(
@@ -52,21 +65,6 @@ export function SlashCommandPlugin() {
     [editor],
   )
 
-  // Group options by category for rendering
-  function groupOptions(opts: SlashOption[]) {
-    const groups: { category: string; label: string; items: SlashOption[] }[] = []
-    const seen = new Set<string>()
-    for (const opt of opts) {
-      const cat = opt.block.category
-      if (!seen.has(cat)) {
-        seen.add(cat)
-        groups.push({ category: cat, label: CATEGORY_LABELS[cat] ?? cat, items: [] })
-      }
-      groups[groups.length - 1].items.push(opt)
-    }
-    return groups
-  }
-
   return (
     <LexicalTypeaheadMenuPlugin<SlashOption>
       onQueryChange={setQueryString}
@@ -74,31 +72,61 @@ export function SlashCommandPlugin() {
       triggerFn={checkForTriggerMatch}
       options={options}
       menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) => {
-        if (!anchorElementRef.current || options.length === 0) return null
+        if (!anchorElementRef.current) return null
+        if (allMatchingBlocks.length === 0) return null
 
-        const groups = groupOptions(options)
-        let globalIndex = 0
+        // Build category groups from all matching blocks
+        const groups = CATEGORY_ORDER
+          .map(cat => ({
+            cat,
+            label: CATEGORY_LABELS[cat],
+            blocks: allMatchingBlocks.filter(b => b.category === cat),
+          }))
+          .filter(g => g.blocks.length > 0)
+
+        if (groups.length === 0) return null
+
+        // Track index into the `options` array (only available blocks) for keyboard highlight
+        let availableIdx = 0
 
         return createPortal(
           <div className="slash-menu">
-            {groups.map((group) => (
-              <div key={group.category}>
+            {groups.map(group => (
+              <div key={group.cat}>
                 <div className="slash-menu-section">{group.label}</div>
                 <ul className="slash-menu-list">
-                  {group.items.map((option) => {
-                    const idx = globalIndex++
+                  {group.blocks.map(block => {
+                    if (block.status === 'available') {
+                      const myIdx = availableIdx++
+                      const isSelected = myIdx === selectedIndex
+                      return (
+                        <li
+                          key={block.key}
+                          className={`slash-menu-item${isSelected ? ' selected' : ''}`}
+                          onMouseEnter={() => setHighlightedIndex(myIdx)}
+                          onClick={() => {
+                            const opt = options[myIdx]
+                            if (opt) selectOptionAndCleanUp(opt)
+                          }}
+                        >
+                          <span className="slash-menu-icon">{block.icon}</span>
+                          <span className="slash-menu-text">
+                            <span className="slash-menu-title">{block.label}</span>
+                            <span className="slash-menu-description">{block.description}</span>
+                          </span>
+                        </li>
+                      )
+                    }
+
+                    // Coming-soon: visible but not selectable
                     return (
-                      <li
-                        key={option.key}
-                        className={idx === selectedIndex ? 'slash-menu-item selected' : 'slash-menu-item'}
-                        onMouseEnter={() => setHighlightedIndex(idx)}
-                        onClick={() => selectOptionAndCleanUp(option)}
-                      >
-                        <span className="slash-menu-icon">{option.block.icon}</span>
+                      <li key={block.key} className="slash-menu-item slash-menu-item-soon">
+                        <span className="slash-menu-icon">{block.icon}</span>
                         <span className="slash-menu-text">
-                          <span className="slash-menu-title">{option.block.label}</span>
-                          <span className="slash-menu-description">{option.block.description}</span>
+                          <span className="slash-menu-title">{block.label}</span>
+                          <span className="slash-menu-description">{block.description}</span>
                         </span>
+                        <span className="slash-menu-badge-soon">Soon</span>
                       </li>
                     )
                   })}

@@ -7,6 +7,8 @@ import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin
 import { SlashCommandPlugin } from './SlashCommandPlugin'
 import { InitStreamPlugin } from './plugins/InitStreamPlugin'
 import { AutoSavePlugin } from './plugins/AutoSavePlugin'
+import { BlockControlsPlugin } from './plugins/BlockControlsPlugin'
+import { BlockMovementPlugin } from './plugins/BlockMovementPlugin'
 import { EditorStatePlugin } from './plugins/EditorStatePlugin'
 import { FloatingFormatPlugin } from './plugins/FloatingFormatPlugin'
 import { MOCK_DOCUMENT_TITLE } from './mockDocument'
@@ -48,6 +50,12 @@ export function EditorArea() {
 
           {/* Floating format toolbar */}
           <FloatingFormatPlugin />
+
+          {/* Block hover controls (drag handle + action menu) */}
+          <BlockControlsPlugin />
+
+          {/* Keyboard block movement: Alt+Shift+↑↓ */}
+          <BlockMovementPlugin />
 
           {/* Slash command menu */}
           <SlashCommandPlugin />

@@ -620,6 +620,105 @@
   flex-shrink: 0;
 }
 
+/* ── Block hover controls ────────────────────────────────── */
+
+.block-controls {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 120;
+  pointer-events: all;
+  opacity: 0;
+  animation: block-ctrl-fadein 0.1s ease forwards;
+}
+
+@keyframes block-ctrl-fadein {
+  to { opacity: 1; }
+}
+
+.block-ctrl-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+
+.block-ctrl-btn:hover {
+  background: var(--c-surface-active);
+  color: var(--c-text-2);
+}
+
+/* ── Block action menu ───────────────────────────────────── */
+
+.block-action-menu {
+  position: fixed;
+  z-index: 250;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: 172px;
+  animation: block-ctrl-fadein 0.08s ease forwards;
+}
+
+.block-action-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  color: var(--c-text-2);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+
+.block-action-item:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.block-action-item.block-action-danger:hover {
+  background: #fff1f0;
+  color: #c0392b;
+}
+
+.block-action-icon {
+  color: var(--c-text-3);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.block-action-kbd {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.block-action-sep {
+  height: 1px;
+  background: var(--c-border);
+  margin: 3px 0;
+}
+
 /* ── Slash menu ──────────────────────────────────────────── */
 
 .slash-menu {
@@ -693,6 +792,28 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Coming-soon slash menu item */
+.slash-menu-item-soon {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.slash-menu-badge-soon {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--c-ground);
+  color: var(--c-text-3);
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--c-border);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* ================================================================
