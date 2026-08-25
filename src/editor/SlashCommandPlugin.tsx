@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   LexicalTypeaheadMenuPlugin,
@@ -6,6 +6,12 @@ import {
   useBasicTypeaheadTriggerMatch,
 } from '@lexical/react/LexicalTypeaheadMenuPlugin'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import {
+  KEY_ESCAPE_COMMAND,
+  COMMAND_PRIORITY_HIGH,
+  $getSelection,
+  $isRangeSelection,
+} from 'lexical'
 import {
   BLOCK_REGISTRY,
   CATEGORY_ORDER,
@@ -24,6 +30,30 @@ class SlashOption extends MenuOption {
 export function SlashCommandPlugin() {
   const [editor] = useLexicalComposerContext()
   const [queryString, setQueryString] = useState<string | null>(null)
+  const queryStringRef = useRef<string | null>(null)
+
+  useEffect(() => { queryStringRef.current = queryString }, [queryString])
+
+  // On Escape while menu is open: delete the '/' + typed query so it doesn't litter the doc
+  useEffect(() => {
+    return editor.registerCommand(
+      KEY_ESCAPE_COMMAND,
+      () => {
+        const q = queryStringRef.current
+        if (q === null) return false
+        editor.update(() => {
+          const sel = $getSelection()
+          if (!$isRangeSelection(sel) || !sel.isCollapsed()) return
+          const charsToDelete = 1 + (q?.length ?? 0)
+          for (let i = 0; i < charsToDelete; i++) {
+            sel.deleteCharacter(true)
+          }
+        })
+        return true
+      },
+      COMMAND_PRIORITY_HIGH,
+    )
+  }, [editor])
 
   const checkForTriggerMatch = useBasicTypeaheadTriggerMatch('/', { minLength: 0 })
 

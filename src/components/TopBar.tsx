@@ -1,5 +1,6 @@
 import { UNDO_COMMAND, REDO_COMMAND } from 'lexical'
 import { useEditorUI } from '../editor/context/EditorUIContext'
+import { useDocument, formatRelativeTime } from '../context/DocumentContext'
 
 interface TopBarProps {
   leftOpen: boolean
@@ -10,6 +11,19 @@ interface TopBarProps {
 
 export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: TopBarProps) {
   const { editor, canUndo, canRedo } = useEditorUI()
+  const { title, saveStatus, lastSaved, wordCount } = useDocument()
+
+  const saveLabel =
+    saveStatus === 'saving'  ? 'Saving…' :
+    saveStatus === 'saved'   ? (lastSaved ? `Saved ${formatRelativeTime(lastSaved)}` : 'Saved') :
+    saveStatus === 'unsaved' ? 'Unsaved changes' :
+    ''
+
+  const saveDotClass =
+    saveStatus === 'saving'  ? 'topbar-save-dot saving' :
+    saveStatus === 'saved'   ? 'topbar-save-dot saved' :
+    saveStatus === 'unsaved' ? 'topbar-save-dot unsaved' :
+    'topbar-save-dot'
 
   return (
     <header className="app-topbar">
@@ -28,19 +42,27 @@ export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: Top
         <span className="topbar-divider" aria-hidden="true" />
 
         <nav className="topbar-breadcrumb" aria-label="Document location">
-          <span className="topbar-crumb-subject">Chemistry</span>
+          <span className="topbar-crumb-subject">Notebook</span>
           <span className="topbar-crumb-sep" aria-hidden="true">/</span>
-          <span className="topbar-crumb-title">Introduction to Chemistry</span>
+          <span className="topbar-crumb-title">{title || 'Untitled'}</span>
         </nav>
       </div>
 
-      <div className="topbar-center" />
+      <div className="topbar-center">
+        {wordCount > 0 && (
+          <span className="topbar-wordcount" aria-label={`${wordCount} words`}>
+            {wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}
+          </span>
+        )}
+      </div>
 
       <div className="topbar-right">
-        <span className="topbar-save-status" aria-live="polite">
-          <span className="topbar-save-dot" aria-hidden="true" />
-          Auto-saved
-        </span>
+        {saveLabel && (
+          <span className="topbar-save-status" aria-live="polite">
+            <span className={saveDotClass} aria-hidden="true" />
+            {saveLabel}
+          </span>
+        )}
 
         <span className="topbar-divider" aria-hidden="true" />
 

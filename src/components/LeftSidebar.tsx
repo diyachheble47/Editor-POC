@@ -1,41 +1,21 @@
-import { useState } from 'react'
-
-interface Page {
-  id: string
-  emoji: string
-  title: string
-}
-
-interface RecentItem {
-  id: string
-  title: string
-  ago: string
-}
-
-const PAGES: Page[] = [
-  { id: '1', emoji: '🧪', title: 'Introduction to Chemistry' },
-  { id: '2', emoji: '📋', title: 'Periodic Table' },
-  { id: '3', emoji: '⚗️', title: 'Chemical Bonds' },
-  { id: '4', emoji: '🌡️', title: 'Thermodynamics' },
-  { id: '5', emoji: '🌿', title: 'Organic Chemistry' },
-]
-
-const RECENT: RecentItem[] = [
-  { id: '1', title: 'Introduction to Chemistry', ago: 'Just now' },
-  { id: '3', title: 'Chemical Bonds', ago: '2 days ago' },
-]
+import { useEffect, useRef, useState } from 'react'
+import { useEditorUI } from '../editor/context/EditorUIContext'
+import { useDocument, formatRelativeTime } from '../context/DocumentContext'
+import type { OutlineItem } from '../context/DocumentContext'
 
 interface LeftSidebarProps {
   isOpen: boolean
 }
 
 export function LeftSidebar({ isOpen }: LeftSidebarProps) {
-  const [activePage, setActivePage] = useState('1')
   const [query, setQuery] = useState('')
+  const { outline, versions, title } = useDocument()
 
-  const filteredPages = query
-    ? PAGES.filter(p => p.title.toLowerCase().includes(query.toLowerCase()))
-    : PAGES
+  const filteredOutline = query
+    ? outline.filter(h => h.text.toLowerCase().includes(query.toLowerCase()))
+    : outline
+
+  const recent = versions.slice(0, 5)
 
   return (
     <aside className={`app-sidebar-left${isOpen ? '' : ' closed'}`} aria-label="Navigator">
@@ -45,9 +25,6 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
         <div className="lsb-header">
           <span className="lsb-header-icon" aria-hidden="true">📚</span>
           <span className="lsb-header-title">My Notebook</span>
-          <button type="button" className="icon-btn lsb-new-btn" title="New page" aria-label="New page">
-            <PlusIcon />
-          </button>
         </div>
 
         {/* Search */}
@@ -57,10 +34,10 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
             <input
               className="lsb-search-input"
               type="search"
-              placeholder="Search pages…"
+              placeholder="Search headings…"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              aria-label="Search pages"
+              aria-label="Search headings"
             />
           </div>
         </div>
@@ -68,62 +45,71 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
         {/* Scrollable body */}
         <div className="lsb-scroll">
 
-          {/* Pages */}
+          {/* Current document */}
           <div className="lsb-section">
-            <div className="lsb-section-header">Pages</div>
-            {filteredPages.map(page => (
-              <button
-                key={page.id}
-                type="button"
-                className={`lsb-page-item${activePage === page.id ? ' active' : ''}`}
-                onClick={() => setActivePage(page.id)}
-                aria-current={activePage === page.id ? 'page' : undefined}
-              >
-                <span className="lsb-page-emoji" aria-hidden="true">{page.emoji}</span>
-                <span className="lsb-page-title">{page.title}</span>
-              </button>
-            ))}
-            {filteredPages.length === 0 && (
-              <p className="lsb-empty-search">No results for "{query}"</p>
-            )}
+            <div className="lsb-section-header">Current document</div>
+            <div className="lsb-active-doc">
+              <span className="lsb-active-doc-emoji" aria-hidden="true">🧪</span>
+              <span className="lsb-active-doc-title">{title || 'Untitled'}</span>
+            </div>
           </div>
 
           {/* Outline */}
           <div className="lsb-section">
             <div className="lsb-section-header">Outline</div>
-            <div className="lsb-outline-empty">
-              <span className="lsb-outline-empty-glyph" aria-hidden="true">≡</span>
-              <p className="lsb-outline-empty-text">
-                Add headings to your document to build an outline
-              </p>
+            {filteredOutline.length === 0 ? (
+              query ? (
+                <p className="lsb-empty-search">No headings match "{query}"</p>
+              ) : (
+                <div className="lsb-outline-empty">
+                  <span className="lsb-outline-empty-glyph" aria-hidden="true">≡</span>
+                  <p className="lsb-outline-empty-text">
+                    Add headings to your document to build an outline
+                  </p>
+                </div>
+              )
+            ) : (
+              <OutlineNav items={filteredOutline} />
+            )}
+          </div>
+
+          {/* Recent saves */}
+          {recent.length > 0 && (
+            <div className="lsb-section">
+              <div className="lsb-section-header">Recent saves</div>
+              {recent.map(v => (
+                <div key={v.id} className="lsb-history-item">
+                  <span className="lsb-history-dot" aria-hidden="true" />
+                  <span className="lsb-history-title">{v.title || 'Untitled'}</span>
+                  <span className="lsb-history-time">{formatRelativeTime(new Date(v.savedAt))}</span>
+                </div>
+              ))}
             </div>
-          </div>
+          )}
 
-          {/* Recent */}
-          <div className="lsb-section">
-            <div className="lsb-section-header">Recent</div>
-            {RECENT.map(item => (
-              <button
-                key={item.id}
-                type="button"
-                className="lsb-history-item"
-                onClick={() => setActivePage(item.id)}
-              >
-                <span className="lsb-history-dot" aria-hidden="true" />
-                <span className="lsb-history-title">{item.title}</span>
-                <span className="lsb-history-time">{item.ago}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Versions */}
+          {/* Version history */}
           <div className="lsb-section">
             <div className="lsb-section-header">Version history</div>
-            <div className="lsb-versions-placeholder">
-              <span className="lsb-versions-text">
-                Version history will appear here
-              </span>
-            </div>
+            {versions.length === 0 ? (
+              <div className="lsb-versions-placeholder">
+                <span className="lsb-versions-text">Versions appear after the first autosave</span>
+              </div>
+            ) : (
+              <div className="lsb-versions-list">
+                {versions.map((v, i) => (
+                  <div
+                    key={v.id}
+                    className="lsb-version-item"
+                    title={`Saved ${new Date(v.savedAt).toLocaleString()} — restore coming soon`}
+                    aria-label={`Version ${versions.length - i}, saved ${new Date(v.savedAt).toLocaleString()}`}
+                  >
+                    <span className="lsb-version-index">v{versions.length - i}</span>
+                    <span className="lsb-version-title">{v.title || 'Untitled'}</span>
+                    <span className="lsb-version-time">{formatRelativeTime(new Date(v.savedAt))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
@@ -141,16 +127,65 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
   )
 }
 
-/* ── Icons ─────────────────────────────────────────────────── */
+/* ── Outline with scroll + active section ───────────────────── */
 
-function PlusIcon() {
+function OutlineNav({ items }: { items: OutlineItem[] }) {
+  const { editor } = useEditorUI()
+  const [activeKey, setActiveKey] = useState<string | null>(null)
+  const observerRef = useRef<IntersectionObserver | null>(null)
+
+  // Set up IntersectionObserver to highlight the heading in view
+  useEffect(() => {
+    if (!editor) return
+
+    observerRef.current?.disconnect()
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const key = (entry.target as HTMLElement).dataset.lexicalNodeKey
+            if (key) setActiveKey(key)
+          }
+        }
+      },
+      { rootMargin: '-10% 0px -80% 0px', threshold: 0 },
+    )
+    observerRef.current = obs
+
+    for (const item of items) {
+      const el = editor.getElementByKey(item.key)
+      if (el) obs.observe(el)
+    }
+
+    return () => obs.disconnect()
+  }, [editor, items])
+
+  function scrollTo(key: string) {
+    if (!editor) return
+    const el = editor.getElementByKey(key)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setActiveKey(key)
+  }
+
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <line x1="7" y1="2" x2="7" y2="12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
+    <nav className="lsb-outline-list" aria-label="Document outline">
+      {items.map(item => (
+        <button
+          key={item.key}
+          type="button"
+          className={`lsb-outline-item lsb-outline-${item.tag}${activeKey === item.key ? ' active' : ''}`}
+          onClick={() => scrollTo(item.key)}
+          title={item.text}
+        >
+          {item.text}
+        </button>
+      ))}
+    </nav>
   )
 }
+
+/* ── Icons ─────────────────────────────────────────────────── */
 
 function SearchIcon() {
   return (

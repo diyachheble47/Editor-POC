@@ -56,6 +56,7 @@ export function EditorStatePlugin() {
           isStrikethrough: selection.hasFormat('strikethrough'),
           isCode: selection.hasFormat('code'),
           blockType: resolveBlockType(selection),
+          selectedText: selection.getTextContent(),
         })
       })
     })

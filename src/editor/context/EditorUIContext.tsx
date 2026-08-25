@@ -1,6 +1,27 @@
 import { createContext, useCallback, useContext, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { LexicalEditor } from 'lexical'
+import type { Model3DAnimationConfig, Model3DDisplayConfig } from '../nodes/model3d/Model3DNode'
+
+export type RightTab = 'insert' | 'ai' | 'stem' | 'media'
+
+export type MathVariant = 'math' | 'chemistry'
+
+export interface ActiveMath {
+  nodeKey: string
+  latex: string
+  variant: MathVariant
+  displayMode: boolean
+}
+
+export interface ActiveModel3D {
+  nodeKey: string
+  modelUrl: string
+  fileName: string
+  scale: number
+  animation: Model3DAnimationConfig
+  display: Model3DDisplayConfig
+}
 
 export type BlockType =
   | 'paragraph'
@@ -21,6 +42,10 @@ interface EditorUIState {
   isStrikethrough: boolean
   isCode: boolean
   blockType: BlockType
+  activeMath: ActiveMath | null
+  activeModel3d: ActiveModel3D | null
+  rightTab: RightTab
+  selectedText: string
 }
 
 interface EditorUIContextValue extends EditorUIState {
@@ -37,6 +62,10 @@ const DEFAULTS: EditorUIState = {
   isStrikethrough: false,
   isCode: false,
   blockType: 'paragraph',
+  activeMath: null,
+  activeModel3d: null,
+  rightTab: 'insert',
+  selectedText: '',
 }
 
 const EditorUIContext = createContext<EditorUIContextValue>({

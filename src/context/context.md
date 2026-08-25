@@ -20,7 +20,7 @@ Teacher Notebook / Document Editor
 │       ├── Callouts
 │       ├── Images
 │       ├── Video
-│       ├── Files
+│       ├── Filesf40e3d7e-7f5e-437f-b2f0-20c7a3c5efb4
 │       ├── Code
 │       ├── Math
 │       ├── Chemistry
@@ -592,7 +592,7 @@ The target should clearly separate:
 Also propose the initial folder structure.
 
 Do not introduce unnecessary libraries.
-
+f40e3d7e-7f5e-437f-b2f0-20c7a3c5efb4
 At the end, provide:
 
 A. Current architecture
@@ -813,7 +813,6 @@ rather than editing a giant switch statement.
 
 Maintain the premium notebook UI.
 ```
-
 ---
 
 # Prompt 5 — Custom node architecture

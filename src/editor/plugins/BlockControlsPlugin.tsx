@@ -43,6 +43,7 @@ export function BlockControlsPlugin() {
   const menuRef = useRef<HTMLDivElement>(null)
   const menuOpenRef = useRef(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rootCleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => { menuOpenRef.current = menuOpen }, [menuOpen])
 
@@ -63,48 +64,70 @@ export function BlockControlsPlugin() {
     }, 280)
   }, [cancelHide])
 
-  // Attach mousemove to the editor root element
   useEffect(() => {
-    const root = editor.getRootElement()
-    if (!root) return
+    const unregisterRootListener = editor.registerRootListener((root) => {
+      rootCleanupRef.current?.()
+      rootCleanupRef.current = null
 
-    function onMouseMove(e: MouseEvent) {
-      cancelHide()
+      if (!root) return
 
-      // Walk up from target to find a direct child of the editor root
-      let elem = e.target as HTMLElement
-      while (elem && elem.parentElement !== root) {
-        if (!elem.parentElement) { scheduleHide(); return }
-        elem = elem.parentElement as HTMLElement
-      }
-      if (!elem || elem === root) { scheduleHide(); return }
-
-      // Find which Lexical root-level node corresponds to this DOM element
-      let foundKey: NodeKey | null = null
-      editor.getEditorState().read(() => {
-        for (const child of $getRoot().getChildren()) {
-          if (editor.getElementByKey(child.getKey()) === elem) {
-            foundKey = child.getKey()
-            break
-          }
+      function resolveHoveredBlock(target: EventTarget | null): HTMLElement | null {
+        let elem = target as HTMLElement | null
+        while (elem && elem !== root && elem.parentElement !== root) {
+          elem = elem.parentElement
         }
-      })
+        return elem && elem !== root ? elem : null
+      }
 
-      if (!foundKey) { scheduleHide(); return }
+      function onPointerMove(e: PointerEvent) {
+        cancelHide()
 
-      nodeKeyRef.current = foundKey
-      const rect = elem.getBoundingClientRect()
-      setCtrlPos({
-        top: rect.top + rect.height / 2,
-        left: rect.left,
-      })
-    }
+        const elem = resolveHoveredBlock(e.target)
+        if (!elem) {
+          scheduleHide()
+          return
+        }
 
-    root.addEventListener('mousemove', onMouseMove)
-    root.addEventListener('mouseleave', scheduleHide)
+        let foundKey: NodeKey | null = null
+        editor.getEditorState().read(() => {
+          for (const child of $getRoot().getChildren()) {
+            if (editor.getElementByKey(child.getKey()) === elem) {
+              foundKey = child.getKey()
+              break
+            }
+          }
+        })
+
+        if (!foundKey) {
+          scheduleHide()
+          return
+        }
+
+        nodeKeyRef.current = foundKey
+        const rect = elem.getBoundingClientRect()
+        setCtrlPos({
+          top: rect.top + rect.height / 2,
+          left: rect.left,
+        })
+      }
+
+      function onPointerLeave() {
+        scheduleHide()
+      }
+
+      root.addEventListener('pointermove', onPointerMove)
+      root.addEventListener('pointerleave', onPointerLeave)
+
+      rootCleanupRef.current = () => {
+        root.removeEventListener('pointermove', onPointerMove)
+        root.removeEventListener('pointerleave', onPointerLeave)
+      }
+    })
+
     return () => {
-      root.removeEventListener('mousemove', onMouseMove)
-      root.removeEventListener('mouseleave', scheduleHide)
+      rootCleanupRef.current?.()
+      rootCleanupRef.current = null
+      unregisterRootListener()
     }
   }, [editor, cancelHide, scheduleHide])
 
@@ -181,7 +204,11 @@ export function BlockControlsPlugin() {
           className="block-ctrl-btn"
           title="Block options"
           aria-label="Block options"
-          onMouseDown={e => { e.preventDefault(); setMenuOpen(v => !v) }}
+          onMouseDown={e => {
+            e.preventDefault()
+            e.stopPropagation()
+            setMenuOpen(v => !v)
+          }}
         >
           <GridDotsIcon />
         </button>
@@ -190,7 +217,11 @@ export function BlockControlsPlugin() {
           className="block-ctrl-btn"
           title="Add block below"
           aria-label="Add block below"
-          onMouseDown={e => { e.preventDefault(); handleAddBelow() }}
+          onMouseDown={e => {
+            e.preventDefault()
+            e.stopPropagation()
+            handleAddBelow()
+          }}
         >
           <PlusIcon />
         </button>

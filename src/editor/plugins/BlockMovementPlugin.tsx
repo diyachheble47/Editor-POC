@@ -1,39 +1,50 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $getSelection, $isRangeSelection } from 'lexical'
 
 export function BlockMovementPlugin() {
   const [editor] = useLexicalComposerContext()
+  const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (!e.altKey || !e.shiftKey) return
-      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    const unregisterRootListener = editor.registerRootListener((root) => {
+      // Remove listener from the previous root before attaching to new one
+      cleanupRef.current?.()
+      cleanupRef.current = null
 
-      // Only act when the editor is focused
-      const root = editor.getRootElement()
-      if (!root || !root.contains(document.activeElement)) return
+      if (!root) return
 
-      e.preventDefault()
+      function onKeyDown(e: KeyboardEvent) {
+        if (!e.altKey || !e.shiftKey) return
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
 
-      editor.update(() => {
-        const selection = $getSelection()
-        if (!$isRangeSelection(selection)) return
+        e.preventDefault()
 
-        const topLevel = selection.anchor.getNode().getTopLevelElementOrThrow()
+        editor.update(() => {
+          const selection = $getSelection()
+          if (!$isRangeSelection(selection)) return
 
-        if (e.key === 'ArrowUp') {
-          const prev = topLevel.getPreviousSibling()
-          if (prev) prev.insertBefore(topLevel)
-        } else {
-          const next = topLevel.getNextSibling()
-          if (next) next.insertAfter(topLevel)
-        }
-      })
+          const topLevel = selection.anchor.getNode().getTopLevelElementOrThrow()
+
+          if (e.key === 'ArrowUp') {
+            const prev = topLevel.getPreviousSibling()
+            if (prev) prev.insertBefore(topLevel)
+          } else {
+            const next = topLevel.getNextSibling()
+            if (next) next.insertAfter(topLevel)
+          }
+        })
+      }
+
+      root.addEventListener('keydown', onKeyDown)
+      cleanupRef.current = () => root.removeEventListener('keydown', onKeyDown)
+    })
+
+    return () => {
+      cleanupRef.current?.()
+      cleanupRef.current = null
+      unregisterRootListener()
     }
-
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
   }, [editor])
 
   return null

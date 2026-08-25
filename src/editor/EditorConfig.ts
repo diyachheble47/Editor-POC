@@ -1,25 +1,21 @@
+// Importing customNodes triggers all self-registrations (registerNode calls).
+// This must be the first import so the registry is populated before we read it.
+import './customNodes'
+
 import type { InitialConfigType } from '@lexical/react/LexicalComposer'
-import { HeadingNode, QuoteNode } from '@lexical/rich-text'
-import { ListNode, ListItemNode } from '@lexical/list'
-import { CodeNode, CodeHighlightNode } from '@lexical/code-core'
-import { HorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode'
 import { EquationNode } from './nodes/EquationNode'
 import { Molecule3DNode } from './nodes/Molecule3DNode'
+import { CORE_NODES, getRegisteredNodes } from './nodeRegistry'
 
 export const editorConfig: InitialConfigType = {
   namespace: 'teacher-notebook',
   nodes: [
-    // Core text structure
-    HeadingNode,
-    QuoteNode,
-    ListNode,
-    ListItemNode,
-    CodeNode,
-    CodeHighlightNode,
-    HorizontalRuleNode,
-    // Custom domain nodes
+    ...CORE_NODES,
+    // Legacy STEM nodes (pre-date the registry pattern — will be migrated in a future prompt)
     EquationNode,
     Molecule3DNode,
+    // Custom nodes registered via registerNode() — populated by customNodes.ts imports
+    ...getRegisteredNodes(),
   ],
   onError(error: Error) {
     throw error

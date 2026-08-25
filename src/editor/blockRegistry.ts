@@ -53,6 +53,19 @@ function insertAtEnd(
   })
 }
 
+/**
+ * Shared insertion helper for decorator (non-text) nodes.
+ * Inserts at the cursor if there is a range selection, otherwise appends at
+ * the document end. Custom node registrations should use this rather than
+ * duplicating the logic.
+ */
+export function insertDecoratorNode(
+  editor: LexicalEditor,
+  createNode: () => import('lexical').LexicalNode,
+): void {
+  insertAtEnd(editor, createNode)
+}
+
 export const BLOCK_REGISTRY: BlockDef[] = [
 
   // ── BASIC ────────────────────────────────────────────────────
@@ -253,6 +266,18 @@ export const BLOCK_REGISTRY: BlockDef[] = [
     inSidebar: true,
   },
   {
+    key: 'excalidraw',
+    label: 'Drawing',
+    icon: '✏️',
+    description: 'Excalidraw whiteboard / diagram.',
+    category: 'stem',
+    status: 'coming-soon',
+    keywords: ['draw', 'diagram', 'whiteboard', 'excalidraw'],
+    insert: () => {},
+    inSlash: true,
+    inSidebar: false,
+  },
+  {
     key: 'diagram',
     label: 'Diagram',
     icon: '📊',
@@ -398,4 +423,45 @@ export const CATEGORY_LABELS: Record<BlockCategory, string> = {
   stem: 'STEM',
   education: 'Education',
   ai: 'AI',
+}
+
+// ── Registration API ──────────────────────────────────────────────
+// Use these instead of mutating BLOCK_REGISTRY directly.
+
+export function registerBlock(def: BlockDef): void {
+  const exists = BLOCK_REGISTRY.findIndex(b => b.key === def.key)
+  if (exists !== -1) {
+    BLOCK_REGISTRY[exists] = def
+  } else {
+    BLOCK_REGISTRY.push(def)
+  }
+}
+
+// Slash-only alias: marks the block as slash-menu only (not sidebar).
+export function registerSlashCommand(def: Omit<BlockDef, 'inSidebar'>): void {
+  registerBlock({ ...def, inSidebar: false })
+}
+
+// Placeholder for future tool registration (AI tools, integrations, etc.).
+// Shape will expand as the tool system is defined.
+export interface ToolDef {
+  key: string
+  label: string
+  description: string
+  category: BlockCategory
+}
+
+const TOOL_REGISTRY: ToolDef[] = []
+
+export function registerTool(def: ToolDef): void {
+  const exists = TOOL_REGISTRY.findIndex(t => t.key === def.key)
+  if (exists !== -1) {
+    TOOL_REGISTRY[exists] = def
+  } else {
+    TOOL_REGISTRY.push(def)
+  }
+}
+
+export function getTools(): readonly ToolDef[] {
+  return TOOL_REGISTRY
 }

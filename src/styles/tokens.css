@@ -1,37 +1,44 @@
 :root {
   /* ── Surfaces ──────────────────────────────────────────────── */
-  --c-ground:        #f7f7f5;
-  --c-surface:       #ffffff;
-  --c-surface-hover: #f7f7f5;
-  --c-surface-active:#f0f0ee;
+  --c-ground:           #f7f7f5;
+  --c-surface:          #ffffff;
+  --c-surface-hover:    #f4f4f2;
+  --c-surface-active:   #ededeb;
 
   /* ── Borders ───────────────────────────────────────────────── */
-  --c-border:        #e8e8e6;
-  --c-border-strong: #d5d5d3;
+  --c-border:           #e8e8e6;
+  --c-border-strong:    #d2d2cf;
 
   /* ── Text ──────────────────────────────────────────────────── */
-  --c-text:          #1a1a1a;
-  --c-text-2:        #6b6b6b;
-  --c-text-3:        #a8a8a5;
+  --c-text:             #1a1a1a;
+  --c-text-2:           #595959;
+  --c-text-3:           #a3a3a0;
   --c-text-placeholder: #b0b0ab;
 
-  /* ── Accent ────────────────────────────────────────────────── */
-  --c-accent:        #2f80ed;
-  --c-accent-bg:     #edf3fd;
-  --c-accent-hover:  #1a6fd6;
-  --c-accent-text:   #1a5fc7;
+  /* ── Accent (single source of truth — violet-indigo) ───────── */
+  --c-accent:           #6e62c8;
+  --c-accent-hover:     #5b51b0;
+  --c-accent-text:      #5248a8;
+  --c-accent-bg:        #f0eeff;
+  --c-accent-muted:     rgba(110, 98, 200, 0.12);
+  --c-accent-surface:   rgba(110, 98, 200, 0.07);
 
   /* ── Semantic ──────────────────────────────────────────────── */
-  --c-success:       #22c55e;
-  --c-success-bg:    #f0fdf4;
+  --c-success:          #16a34a;
+  --c-success-bg:       #f0fdf4;
+  --c-warn:             #d97706;
+  --c-warn-bg:          #fffbeb;
+  --c-danger:           #dc2626;
+  --c-danger-bg:        #fff1f0;
 
   /* ── Layout dimensions ─────────────────────────────────────── */
-  --topbar-h:        48px;
-  --sidebar-l-w:     240px;
-  --sidebar-r-w:     272px;
+  --topbar-h:           48px;
+  --sidebar-l-w:        240px;
+  --sidebar-r-w:        280px;
 
   /* ── Typography ────────────────────────────────────────────── */
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
 
   /* ── Transitions ───────────────────────────────────────────── */
@@ -40,12 +47,13 @@
   --t-slow: 0.22s ease;
 
   /* ── Radius ────────────────────────────────────────────────── */
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 8px;
+  --r-sm:  4px;
+  --r-md:  6px;
+  --r-lg:  10px;
+  --r-xl:  14px;
 
   /* ── Shadows ───────────────────────────────────────────────── */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.05);
 }

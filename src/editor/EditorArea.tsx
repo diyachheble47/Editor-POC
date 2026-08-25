@@ -11,13 +11,23 @@ import { BlockControlsPlugin } from './plugins/BlockControlsPlugin'
 import { BlockMovementPlugin } from './plugins/BlockMovementPlugin'
 import { EditorStatePlugin } from './plugins/EditorStatePlugin'
 import { FloatingFormatPlugin } from './plugins/FloatingFormatPlugin'
-import { MOCK_DOCUMENT_TITLE } from './mockDocument'
+import { OutlinePlugin } from './plugins/OutlinePlugin'
+import { useDocument } from '../context/DocumentContext'
 
 export function EditorArea() {
+  const { title, setTitle } = useDocument()
+
   return (
     <div className="editor-area-scroll">
       <div className="editor-page">
-        <h1 className="page-document-title">{MOCK_DOCUMENT_TITLE}</h1>
+        <input
+          className="page-document-title-input"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Untitled"
+          aria-label="Document title"
+          spellCheck={false}
+        />
 
         <div className="editor-shell">
           <RichTextPlugin
@@ -44,6 +54,9 @@ export function EditorArea() {
           {/* Persistence */}
           <AutoSavePlugin />
           <InitStreamPlugin />
+
+          {/* Document intelligence */}
+          <OutlinePlugin />
 
           {/* Editor state bridge → React UI */}
           <EditorStatePlugin />
