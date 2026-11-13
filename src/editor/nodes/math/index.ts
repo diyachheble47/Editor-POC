@@ -1,11 +1,17 @@
 // Self-registration: importing this module wires MathNode into both the
-// Lexical node list and the slash/block registry. Two blocks are registered:
-//   - 'math'      → LaTeX equation (/math slash command)
-//   - 'chemistry' → mhchem \ce{...} equation (/chemistry slash command)
+// Lexical node list and the slash/block registry.
+//
+// Only the 'math' block is registered here. There used to also be a
+// 'chemistry' (raw mhchem LaTeX) entry, but it opened the exact same Math
+// Editor sidebar panel — trig functions (sin/cos/tan) and all — which made
+// no sense labeled as chemistry and only confused things next to the real,
+// guided "Chemical Equation" block (EquationNode, ../EquationNode.tsx).
+// MathNode's 'chemistry' variant still exists for already-saved documents
+// (see MathNode.tsx); it's just not offered as a new thing to insert.
 
 import { registerNode } from '../../nodeRegistry'
 import { registerBlock, insertDecoratorNode } from '../../blockRegistry'
-import { MathNode, $createMathNode, DEFAULT_MATH_LATEX, DEFAULT_CHEM_LATEX } from './MathNode'
+import { MathNode, $createMathNode, DEFAULT_MATH_LATEX } from './MathNode'
 
 registerNode(MathNode)
 
@@ -18,19 +24,6 @@ registerBlock({
   status: 'available',
   keywords: ['math', 'latex', 'equation', 'formula', 'expression'],
   insert: (editor) => insertDecoratorNode(editor, () => $createMathNode(DEFAULT_MATH_LATEX, true, 'math')),
-  inSlash: true,
-  inSidebar: true,
-})
-
-registerBlock({
-  key: 'chemistry',
-  label: 'Chemistry',
-  icon: '⚗',
-  description: 'Chemistry equation using \\ce{} mhchem notation.',
-  category: 'stem',
-  status: 'available',
-  keywords: ['chemistry', 'chemical', 'equation', 'reaction', 'mhchem', 'ce'],
-  insert: (editor) => insertDecoratorNode(editor, () => $createMathNode(DEFAULT_CHEM_LATEX, true, 'chemistry')),
   inSlash: true,
   inSidebar: true,
 })

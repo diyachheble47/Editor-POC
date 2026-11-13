@@ -1,50 +1,47 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { $getSelection, $isRangeSelection } from 'lexical'
+import { $getNodeByKey, $getSelection, $isRangeSelection } from 'lexical'
+import type { LexicalNode } from 'lexical'
+import { getSelectedBlockKey } from '../blockSelection'
 
 export function BlockMovementPlugin() {
   const [editor] = useLexicalComposerContext()
-  const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    const unregisterRootListener = editor.registerRootListener((root) => {
-      // Remove listener from the previous root before attaching to new one
-      cleanupRef.current?.()
-      cleanupRef.current = null
+    // Document-level, not the editor root: after clicking a block's handle
+    // (a button outside the editor), focus is no longer inside the root, so a
+    // root listener would never see the keystroke.
+    function onKeyDown(e: KeyboardEvent) {
+      if (!e.altKey || !e.shiftKey) return
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
 
-      if (!root) return
+      e.preventDefault()
 
-      function onKeyDown(e: KeyboardEvent) {
-        if (!e.altKey || !e.shiftKey) return
-        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+      editor.update(() => {
+        // A selected block (set by clicking its handle) takes priority over the
+        // text cursor, which may be sitting in an unrelated paragraph.
+        const selectedBlockKey = getSelectedBlockKey()
+        let topLevel: LexicalNode | null = selectedBlockKey ? $getNodeByKey(selectedBlockKey) : null
 
-        e.preventDefault()
-
-        editor.update(() => {
+        if (!topLevel) {
           const selection = $getSelection()
           if (!$isRangeSelection(selection)) return
+          topLevel = selection.anchor.getNode().getTopLevelElementOrThrow()
+        }
+        if (!topLevel) return
 
-          const topLevel = selection.anchor.getNode().getTopLevelElementOrThrow()
-
-          if (e.key === 'ArrowUp') {
-            const prev = topLevel.getPreviousSibling()
-            if (prev) prev.insertBefore(topLevel)
-          } else {
-            const next = topLevel.getNextSibling()
-            if (next) next.insertAfter(topLevel)
-          }
-        })
-      }
-
-      root.addEventListener('keydown', onKeyDown)
-      cleanupRef.current = () => root.removeEventListener('keydown', onKeyDown)
-    })
-
-    return () => {
-      cleanupRef.current?.()
-      cleanupRef.current = null
-      unregisterRootListener()
+        if (e.key === 'ArrowUp') {
+          const prev = topLevel.getPreviousSibling()
+          if (prev) prev.insertBefore(topLevel)
+        } else {
+          const next = topLevel.getNextSibling()
+          if (next) next.insertAfter(topLevel)
+        }
+      })
     }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
   }, [editor])
 
   return null

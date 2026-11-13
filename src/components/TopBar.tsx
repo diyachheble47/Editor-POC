@@ -1,5 +1,6 @@
 import { UNDO_COMMAND, REDO_COMMAND } from 'lexical'
 import { useEditorUI } from '../editor/context/EditorUIContext'
+import { useEditorFormat } from '../editor/context/EditorFormatContext'
 import { useDocument, formatRelativeTime } from '../context/DocumentContext'
 
 interface TopBarProps {
@@ -10,7 +11,8 @@ interface TopBarProps {
 }
 
 export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: TopBarProps) {
-  const { editor, canUndo, canRedo } = useEditorUI()
+  const { editor } = useEditorUI()
+  const { canUndo, canRedo } = useEditorFormat()
   const { title, saveStatus, lastSaved, wordCount } = useDocument()
 
   const saveLabel =

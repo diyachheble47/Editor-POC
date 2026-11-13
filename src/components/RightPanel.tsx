@@ -1,97 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { $getNodeByKey, $getRoot } from 'lexical'
+import { $getNodeByKey } from 'lexical'
 import katex from 'katex'
 import 'katex/contrib/mhchem'
 import { BLOCK_REGISTRY, CATEGORY_ORDER, CATEGORY_LABELS } from '../editor/blockRegistry'
 import { useEditorUI } from '../editor/context/EditorUIContext'
-import type { RightTab } from '../editor/context/EditorUIContext'
 import { $isMathNode } from '../editor/nodes/math/MathNode'
 import { $getModel3DNodeByKey } from '../editor/nodes/model3d/Model3DNode'
 import type { Model3DDisplayMode } from '../editor/nodes/model3d/Model3DNode'
-import { useAIService } from '../ai/AIServiceContext'
-import { useAIStream } from '../ai/useAIStream'
-import { insertBlocks, replaceSelectionWithBlocks, captureRange } from '../ai/insertBlocks'
-import type { SavedRange } from '../ai/insertBlocks'
-import { AI_COMMANDS } from '../ai/commands'
-import type { AICommandId } from '../ai/types'
-
-const REPLACE_COMMANDS: Set<AICommandId> = new Set(['rewrite'])
-
-export type { RightTab }
 
 interface RightPanelProps {
   isOpen: boolean
-  activeTab: RightTab
-  onTabChange: (tab: RightTab) => void
 }
 
-export function RightPanel({ isOpen, activeTab, onTabChange }: RightPanelProps) {
+export function RightPanel({ isOpen }: RightPanelProps) {
+  const { activeMath, activeModel3d } = useEditorUI()
+
   return (
     <aside className={`app-sidebar-right${isOpen ? '' : ' closed'}`} aria-label="Tools">
       <div className="rpanel-inner">
-
-        {/* Tab strip */}
-        <div className="rpanel-tabs" role="tablist" aria-label="Tool panels">
-          <PanelTab id="insert" label="Insert" active={activeTab === 'insert'} onClick={() => onTabChange('insert')}>
-            <InsertTabIcon />
-          </PanelTab>
-          <PanelTab id="ai" label="AI" active={activeTab === 'ai'} onClick={() => onTabChange('ai')}>
-            <AITabIcon />
-          </PanelTab>
-          <PanelTab id="stem" label="STEM" active={activeTab === 'stem'} onClick={() => onTabChange('stem')}>
-            <STEMTabIcon />
-          </PanelTab>
-          <PanelTab id="media" label="Media" active={activeTab === 'media'} onClick={() => onTabChange('media')}>
-            <MediaTabIcon />
-          </PanelTab>
+        <div className="rpanel-content">
+          {activeMath ? (
+            <MathEditorPanel />
+          ) : activeModel3d ? (
+            <Model3DPropertiesPanel />
+          ) : (
+            <InsertPanel />
+          )}
         </div>
-
-        {/* Panel content */}
-        <div
-          className="rpanel-content"
-          role="tabpanel"
-          aria-labelledby={`tab-${activeTab}`}
-        >
-          {activeTab === 'insert' && <InsertPanel />}
-          {activeTab === 'ai' && <AIPanel />}
-          {activeTab === 'stem' && <STEMPanel />}
-          {activeTab === 'media' && <MediaPanel />}
-        </div>
-
       </div>
     </aside>
   )
 }
 
-/* ── Tab button ──────────────────────────────────────────────── */
-
-function PanelTab({
-  id, label, active, onClick, children,
-}: {
-  id: string
-  label: string
-  active: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      id={`tab-${id}`}
-      aria-selected={active}
-      className={`rpanel-tab${active ? ' active' : ''}`}
-      onClick={onClick}
-    >
-      <span className="rpanel-tab-icon">{children}</span>
-      <span className="rpanel-tab-label">{label}</span>
-    </button>
-  )
-}
-
 /* ── INSERT PANEL ───────────────────────────────────────────── */
+// Every insertable block grouped by category (Basic, Layout, Media, STEM) —
+// no separate tabs to dig through.
 
 function InsertPanel() {
   const [editor] = useLexicalComposerContext()
@@ -137,206 +81,18 @@ function InsertPanel() {
   )
 }
 
-/* ── AI PANEL ───────────────────────────────────────────────── */
-
-function AIPanel() {
-  const [editor] = useLexicalComposerContext()
-  const service = useAIService()
-  const { selectedText } = useEditorUI()
-  const { status, text, blocks, error, start, cancel, reset } = useAIStream()
-  const [customPrompt, setCustomPrompt] = useState('')
-  const [activeCommand, setActiveCommand] = useState<AICommandId | null>(null)
-  const [savedRange, setSavedRange] = useState<SavedRange | null>(null)
-
-  function runCommand(commandId: AICommandId) {
-    setActiveCommand(commandId)
-    const range = REPLACE_COMMANDS.has(commandId) ? captureRange(editor) : null
-    setSavedRange(range)
-    const documentContext = editor.getEditorState().read(() => $getRoot().getTextContent())
-    start(service, {
-      commandId,
-      selectedText,
-      documentContext,
-      customPrompt: commandId === 'custom' ? customPrompt : undefined,
-    })
-  }
-
-  function handleInsert() {
-    insertBlocks(editor, blocks)
-    reset()
-  }
-
-  function handleReplace() {
-    if (savedRange) {
-      replaceSelectionWithBlocks(editor, savedRange, blocks)
-    } else {
-      insertBlocks(editor, blocks)
-    }
-    reset()
-  }
-
-  const isStreaming = status === 'streaming'
-  const isDone = status === 'done'
-  const hasSelection = selectedText.trim().length > 0
-
-  return (
-    <div className="rpanel-ai-panel">
-      <div className="rpanel-ai-header">
-        <span className="rpanel-ai-title">AI Assistant</span>
-        {hasSelection && (
-          <span className="rpanel-ai-selection-badge" title={selectedText}>
-            Selection
-          </span>
-        )}
-      </div>
-
-      {/* Command buttons */}
-      {status === 'idle' || status === 'error' || status === 'cancelled' ? (
-        <>
-          <div className="rpanel-ai-actions">
-            {AI_COMMANDS.filter(c => c.id !== 'custom').map(cmd => (
-              <button
-                key={cmd.id}
-                type="button"
-                className="rpanel-ai-btn"
-                disabled={cmd.requiresSelection && !hasSelection}
-                title={cmd.requiresSelection && !hasSelection ? 'Select text first' : cmd.description}
-                onClick={() => runCommand(cmd.id)}
-              >
-                <span className="rpanel-ai-btn-icon" aria-hidden="true">{cmd.icon}</span>
-                {cmd.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Custom prompt */}
-          <div className="rpanel-ai-custom">
-            <textarea
-              className="rpanel-ai-custom-input"
-              placeholder="Ask AI anything about the document…"
-              rows={3}
-              value={customPrompt}
-              onChange={e => setCustomPrompt(e.target.value)}
-            />
-            <button
-              type="button"
-              className="rpanel-ai-btn rpanel-ai-custom-btn"
-              disabled={customPrompt.trim().length === 0}
-              onClick={() => runCommand('custom')}
-            >
-              <span className="rpanel-ai-btn-icon" aria-hidden="true">✦</span>
-              Ask AI
-            </button>
-          </div>
-
-          {(status === 'error' || status === 'cancelled') && (
-            <div className="rpanel-ai-error">
-              {error?.message ?? 'Something went wrong.'}
-              <button type="button" className="rpanel-ai-retry-btn" onClick={reset}>
-                Reset
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        /* Streaming / done state */
-        <div className="rpanel-ai-output">
-          <div className="rpanel-ai-output-header">
-            <span className="rpanel-ai-output-label">
-              {AI_COMMANDS.find(c => c.id === activeCommand)?.label ?? 'AI'}
-            </span>
-            {isStreaming && (
-              <button type="button" className="rpanel-ai-cancel-btn" onClick={cancel}>
-                Stop
-              </button>
-            )}
-          </div>
-
-          <div className="rpanel-ai-output-text">
-            {text || <span className="rpanel-ai-thinking">Thinking…</span>}
-            {isStreaming && <span className="rpanel-ai-cursor" aria-hidden="true">▌</span>}
-          </div>
-
-          {isDone && (
-            <div className="rpanel-ai-output-actions">
-              {savedRange ? (
-                <button type="button" className="rpanel-ai-insert-btn" onClick={handleReplace}>
-                  Replace selection
-                </button>
-              ) : (
-                <button type="button" className="rpanel-ai-insert-btn" onClick={handleInsert}>
-                  Insert into document
-                </button>
-              )}
-              {savedRange && (
-                <button type="button" className="rpanel-ai-insert-btn rpanel-ai-insert-secondary" onClick={handleInsert}>
-                  Insert after
-                </button>
-              )}
-              <button type="button" className="rpanel-ai-discard-btn" onClick={reset}>
-                Discard
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── STEM PANEL ─────────────────────────────────────────────── */
-
-function STEMPanel() {
-  const { activeMath, activeModel3d } = useEditorUI()
-  if (activeMath) return <MathEditorPanel />
-  if (activeModel3d) return <Model3DPropertiesPanel />
-  return <STEMBlockInserter />
-}
-
-function STEMBlockInserter() {
-  const [editor] = useLexicalComposerContext()
-  const stemBlocks = BLOCK_REGISTRY.filter(b => b.category === 'stem')
-
-  return (
-    <div className="rpanel-stem-panel">
-      <div className="rpanel-stem-hint">
-        <span className="rpanel-stem-hint-icon" aria-hidden="true">💡</span>
-        <p className="rpanel-stem-hint-text">
-          Click a math or 3D model block in the editor to edit its properties here.
-        </p>
-      </div>
-      <div className="rpanel-section-header" style={{ paddingTop: 0 }}>STEM Blocks</div>
-      {stemBlocks.map(block =>
-        block.status === 'available' ? (
-          <button
-            key={block.key}
-            type="button"
-            className="rpanel-block-btn"
-            onClick={() => block.insert(editor)}
-            title={block.description}
-          >
-            <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
-            <span className="rpanel-block-info">
-              <span className="rpanel-block-label">{block.label}</span>
-              <span className="rpanel-block-desc">{block.description}</span>
-            </span>
-          </button>
-        ) : (
-          <div key={block.key} className="rpanel-coming-item">
-            <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
-            <span className="rpanel-block-info">
-              <span className="rpanel-block-label">{block.label}</span>
-              <span className="rpanel-block-desc">{block.description}</span>
-            </span>
-            <span className="badge-soon">Soon</span>
-          </div>
-        )
-      )}
-    </div>
-  )
-}
-
 /* ── MATH EDITOR PANEL ──────────────────────────────────────── */
+
+const FUNCTION_SYMBOLS = [
+  { label: 'sin', insert: '\\sin(□)', cursor: 1 },
+  { label: 'cos', insert: '\\cos(□)', cursor: 1 },
+  { label: 'tan', insert: '\\tan(□)', cursor: 1 },
+  { label: 'ln', insert: '\\ln(□)', cursor: 1 },
+  { label: 'log', insert: '\\log(□)', cursor: 1 },
+  { label: 'mod', insert: ' \\bmod ', cursor: 0 },
+  { label: '|x|', insert: '|□|', cursor: 1 },
+  { label: '‖x‖', insert: '\\|□\\|', cursor: 1 },
+]
 
 const MATH_SYMBOLS = [
   { label: 'frac', insert: '\\frac{□}{□}', cursor: 6 },
@@ -393,6 +149,20 @@ function MathEditorPanel() {
   )
   const [previewError, setPreviewError] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // Clicking anywhere outside this panel closes it and drops back to the
+  // plain block view — same "goes back to the background" behavior as the
+  // 3D model viewer when you click away from it.
+  useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      if (!panelRef.current?.contains(e.target as Node)) {
+        update({ activeMath: null })
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [update])
 
   // Sync draft when activeMath changes (different node selected)
   useEffect(() => {
@@ -453,7 +223,7 @@ function MathEditorPanel() {
   const variant = activeMath?.variant ?? 'math'
 
   return (
-    <div className="math-editor-panel">
+    <div className="math-editor-panel" ref={panelRef}>
       {/* Header */}
       <div className="math-editor-header">
         <button type="button" className="math-editor-back-btn" onClick={close} title="Back">
@@ -476,6 +246,7 @@ function MathEditorPanel() {
       </div>
 
       {/* LaTeX input */}
+      <div className="math-editor-label">LaTeX source</div>
       <textarea
         ref={textareaRef}
         className="math-editor-textarea"
@@ -489,7 +260,28 @@ function MathEditorPanel() {
         }}
       />
 
+      {/* Functions — trig/log only make sense for math, not chemistry */}
+      {variant !== 'chemistry' && (
+      <div className="math-symbol-section">
+        <div className="math-symbol-label">Functions</div>
+        <div className="math-symbol-row">
+          {FUNCTION_SYMBOLS.map(s => (
+            <button
+              key={s.label}
+              type="button"
+              className="math-sym-btn"
+              title={s.insert}
+              onClick={() => insertAtCursor(s.insert, s.cursor)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      )}
+
       {/* Symbol shortcuts — Math */}
+      {variant !== 'chemistry' && (
       <div className="math-symbol-section">
         <div className="math-symbol-label">Symbols</div>
         <div className="math-symbol-row">
@@ -506,8 +298,10 @@ function MathEditorPanel() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Greek */}
+      {variant !== 'chemistry' && (
       <div className="math-symbol-section">
         <div className="math-symbol-label">Greek</div>
         <div className="math-symbol-row">
@@ -523,6 +317,7 @@ function MathEditorPanel() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Chemistry shortcuts */}
       {variant === 'chemistry' && (
@@ -595,7 +390,7 @@ function Model3DPropertiesPanel() {
     })
   }
 
-  function applyDisplay(dispPatch: Partial<{ mode: Model3DDisplayMode; height: number }>) {
+  function applyDisplay(dispPatch: Partial<{ mode: Model3DDisplayMode; height: number; widthPercent: number }>) {
     const next = { ...display, ...dispPatch }
     patch({ display: next })
     editor.update(() => {
@@ -613,6 +408,9 @@ function Model3DPropertiesPanel() {
       editor.update(() => {
         $getModel3DNodeByKey(nodeKey)?.setModel(url, file.name)
       })
+    }
+    reader.onerror = () => {
+      window.alert(reader.error?.message || 'Could not read file')
     }
     reader.readAsDataURL(file)
   }
@@ -700,80 +498,43 @@ function Model3DPropertiesPanel() {
       <div className="model3d-props-row">
         <span className="model3d-props-label">Display mode</span>
         <div className="model3d-props-modes">
-          {(['inline', 'fullwidth'] as const).map(m => (
+          {([
+            ['inline', 'Inline'],
+            ['fullwidth', 'Full width'],
+            ['float-left', 'Float left'],
+            ['float-right', 'Float right'],
+          ] as const).map(([m, label]) => (
             <button
               key={m}
               type="button"
               className={`model3d-mode-btn${display.mode === m ? ' active' : ''}`}
               onClick={() => applyDisplay({ mode: m })}
             >
-              {m === 'inline' ? 'Inline' : 'Full width'}
+              {label}
             </button>
           ))}
         </div>
       </div>
-    </div>
-  )
-}
 
-/* ── MEDIA PANEL ────────────────────────────────────────────── */
-
-function MediaPanel() {
-  const mediaBlocks = BLOCK_REGISTRY.filter(b => b.category === 'media')
-
-  return (
-    <div className="rpanel-media-panel">
-      <div className="rpanel-section-header" style={{ paddingTop: 0 }}>Media Blocks</div>
-      {mediaBlocks.map(block => (
-        <div key={block.key} className="rpanel-coming-item">
-          <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
-          <span className="rpanel-block-info">
-            <span className="rpanel-block-label">{block.label}</span>
-            <span className="rpanel-block-desc">{block.description}</span>
-          </span>
-          <span className="badge-soon">Soon</span>
+      {(display.mode === 'float-left' || display.mode === 'float-right') && (
+        <div className="model3d-props-row">
+          <label className="model3d-props-label" htmlFor="m3d-width">
+            Width <span className="model3d-props-value">{display.widthPercent}%</span>
+          </label>
+          <input
+            id="m3d-width"
+            type="range"
+            min={20}
+            max={70}
+            step={5}
+            value={display.widthPercent}
+            className="model3d-props-slider"
+            onChange={e => applyDisplay({ widthPercent: Number(e.target.value) })}
+          />
+          <p className="model3d-props-hint">Surrounding paragraph text will wrap around the model.</p>
         </div>
-      ))}
+      )}
     </div>
   )
 }
 
-/* ── Tab icons ──────────────────────────────────────────────── */
-
-function InsertTabIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      <line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function AITabIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      <path d="M8 1.5L9.5 6.5L14.5 8L9.5 9.5L8 14.5L6.5 9.5L1.5 8L6.5 6.5Z" />
-    </svg>
-  )
-}
-
-function STEMTabIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="8" cy="8" r="1.8" fill="currentColor" />
-      <ellipse cx="8" cy="8" rx="6.5" ry="2.5" stroke="currentColor" strokeWidth="1.25" />
-      <ellipse cx="8" cy="8" rx="6.5" ry="2.5" stroke="currentColor" strokeWidth="1.25" transform="rotate(60 8 8)" />
-      <ellipse cx="8" cy="8" rx="6.5" ry="2.5" stroke="currentColor" strokeWidth="1.25" transform="rotate(-60 8 8)" />
-    </svg>
-  )
-}
-
-function MediaTabIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M2 10.5L5.5 7L8 9.5L10.5 6.5L14 10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="5.5" cy="6.5" r="1" fill="currentColor" />
-    </svg>
-  )
-}

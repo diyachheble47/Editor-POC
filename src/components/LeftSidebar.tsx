@@ -9,13 +9,29 @@ interface LeftSidebarProps {
 
 export function LeftSidebar({ isOpen }: LeftSidebarProps) {
   const [query, setQuery] = useState('')
-  const { outline, versions, title } = useDocument()
+  const {
+    outline, documents, activeDocId, createDocument, switchDocument, deleteDocument,
+  } = useDocument()
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const filteredOutline = query
     ? outline.filter(h => h.text.toLowerCase().includes(query.toLowerCase()))
     : outline
 
-  const recent = versions.slice(0, 5)
+  const sortedDocs = [...documents].sort((a, b) => {
+    if (a.id === activeDocId) return -1
+    if (b.id === activeDocId) return 1
+    return (b.lastSaved ?? '').localeCompare(a.lastSaved ?? '')
+  })
+
+  function handleDeleteClick(id: string) {
+    if (confirmDeleteId === id) {
+      deleteDocument(id)
+      setConfirmDeleteId(null)
+    } else {
+      setConfirmDeleteId(id)
+    }
+  }
 
   return (
     <aside className={`app-sidebar-left${isOpen ? '' : ' closed'}`} aria-label="Navigator">
@@ -45,12 +61,58 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
         {/* Scrollable body */}
         <div className="lsb-scroll">
 
-          {/* Current document */}
+          {/* Documents */}
           <div className="lsb-section">
-            <div className="lsb-section-header">Current document</div>
-            <div className="lsb-active-doc">
-              <span className="lsb-active-doc-emoji" aria-hidden="true">🧪</span>
-              <span className="lsb-active-doc-title">{title || 'Untitled'}</span>
+            <div className="lsb-section-header-row">
+              <div className="lsb-section-header">Documents</div>
+              <button
+                type="button"
+                className="lsb-new-doc-btn"
+                onClick={() => { createDocument(); setConfirmDeleteId(null) }}
+                title="New document"
+                aria-label="New document"
+              >
+                +
+              </button>
+            </div>
+            <div className="lsb-doc-list">
+              {sortedDocs.map(doc => {
+                const isActive = doc.id === activeDocId
+                const isConfirming = confirmDeleteId === doc.id
+                return (
+                  <div
+                    key={doc.id}
+                    className={`lsb-doc-item${isActive ? ' active' : ''}`}
+                    onMouseLeave={() => { if (isConfirming) setConfirmDeleteId(null) }}
+                  >
+                    <button
+                      type="button"
+                      className="lsb-doc-item-main"
+                      onClick={() => { switchDocument(doc.id); setConfirmDeleteId(null) }}
+                      title={doc.title || 'Untitled'}
+                    >
+                      <span className="lsb-active-doc-emoji" aria-hidden="true">🧪</span>
+                      <span className="lsb-doc-item-text">
+                        <span className="lsb-active-doc-title">{doc.title || 'Untitled'}</span>
+                        {doc.lastSaved && (
+                          <span className="lsb-doc-item-time">{formatRelativeTime(new Date(doc.lastSaved))}</span>
+                        )}
+                      </span>
+                    </button>
+                    {documents.length > 1 && (
+                      <button
+                        type="button"
+                        className={`lsb-doc-delete-btn${isConfirming ? ' confirming' : ''}`}
+                        onClick={() => handleDeleteClick(doc.id)}
+                        title={isConfirming ? 'Click again to delete' : 'Delete document'}
+                        aria-label={isConfirming ? 'Confirm delete' : 'Delete document'}
+                      >
+                        {isConfirming ? '✓' : '×'}
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
 
@@ -70,45 +132,6 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
               )
             ) : (
               <OutlineNav items={filteredOutline} />
-            )}
-          </div>
-
-          {/* Recent saves */}
-          {recent.length > 0 && (
-            <div className="lsb-section">
-              <div className="lsb-section-header">Recent saves</div>
-              {recent.map(v => (
-                <div key={v.id} className="lsb-history-item">
-                  <span className="lsb-history-dot" aria-hidden="true" />
-                  <span className="lsb-history-title">{v.title || 'Untitled'}</span>
-                  <span className="lsb-history-time">{formatRelativeTime(new Date(v.savedAt))}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Version history */}
-          <div className="lsb-section">
-            <div className="lsb-section-header">Version history</div>
-            {versions.length === 0 ? (
-              <div className="lsb-versions-placeholder">
-                <span className="lsb-versions-text">Versions appear after the first autosave</span>
-              </div>
-            ) : (
-              <div className="lsb-versions-list">
-                {versions.map((v, i) => (
-                  <div
-                    key={v.id}
-                    className="lsb-version-item"
-                    title={`Saved ${new Date(v.savedAt).toLocaleString()} — restore coming soon`}
-                    aria-label={`Version ${versions.length - i}, saved ${new Date(v.savedAt).toLocaleString()}`}
-                  >
-                    <span className="lsb-version-index">v{versions.length - i}</span>
-                    <span className="lsb-version-title">{v.title || 'Untitled'}</span>
-                    <span className="lsb-version-time">{formatRelativeTime(new Date(v.savedAt))}</span>
-                  </div>
-                ))}
-              </div>
             )}
           </div>
 

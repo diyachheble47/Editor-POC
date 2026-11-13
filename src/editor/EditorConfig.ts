@@ -4,16 +4,14 @@ import './customNodes'
 
 import type { InitialConfigType } from '@lexical/react/LexicalComposer'
 import { EquationNode } from './nodes/EquationNode'
-import { Molecule3DNode } from './nodes/Molecule3DNode'
 import { CORE_NODES, getRegisteredNodes } from './nodeRegistry'
 
 export const editorConfig: InitialConfigType = {
   namespace: 'teacher-notebook',
   nodes: [
     ...CORE_NODES,
-    // Legacy STEM nodes (pre-date the registry pattern — will be migrated in a future prompt)
+    // Legacy STEM node (pre-dates the registry pattern — will be migrated in a future prompt)
     EquationNode,
-    Molecule3DNode,
     // Custom nodes registered via registerNode() — populated by customNodes.ts imports
     ...getRegisteredNodes(),
   ],
@@ -28,7 +26,45 @@ export const editorConfig: InitialConfigType = {
       h3: 'editor-heading-h3',
     },
     quote: 'editor-quote',
+    // There is no other table feature in this app — every Lexical table is
+    // a matrix, so it's always themed with bracket styling (see .matrix-*
+    // rules in App.css) rather than needing a separate node type.
+    table: 'matrix-table',
+    tableRow: 'matrix-row',
+    tableCell: 'matrix-cell',
     code: 'editor-code',
+    codeHighlight: {
+      atrule: 'editor-tokenAttr',
+      attr: 'editor-tokenAttr',
+      boolean: 'editor-tokenProperty',
+      builtin: 'editor-tokenSelector',
+      cdata: 'editor-tokenComment',
+      char: 'editor-tokenSelector',
+      class: 'editor-tokenFunction',
+      'class-name': 'editor-tokenFunction',
+      comment: 'editor-tokenComment',
+      constant: 'editor-tokenProperty',
+      deleted: 'editor-tokenProperty',
+      doctype: 'editor-tokenComment',
+      entity: 'editor-tokenOperator',
+      function: 'editor-tokenFunction',
+      important: 'editor-tokenVariable',
+      inserted: 'editor-tokenSelector',
+      keyword: 'editor-tokenAttr',
+      namespace: 'editor-tokenVariable',
+      number: 'editor-tokenProperty',
+      operator: 'editor-tokenOperator',
+      prolog: 'editor-tokenComment',
+      property: 'editor-tokenProperty',
+      punctuation: 'editor-tokenPunctuation',
+      regex: 'editor-tokenVariable',
+      selector: 'editor-tokenSelector',
+      string: 'editor-tokenSelector',
+      symbol: 'editor-tokenProperty',
+      tag: 'editor-tokenProperty',
+      url: 'editor-tokenOperator',
+      variable: 'editor-tokenVariable',
+    },
     list: {
       ul: 'editor-list-ul',
       ol: 'editor-list-ol',

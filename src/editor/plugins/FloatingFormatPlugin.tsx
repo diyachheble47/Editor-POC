@@ -9,7 +9,7 @@ import {
 } from 'lexical'
 import { $setBlocksType } from '@lexical/selection'
 import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
-import { useEditorUI } from '../context/EditorUIContext'
+import { useEditorFormat } from '../context/EditorFormatContext'
 import type { BlockType } from '../context/EditorUIContext'
 
 interface ToolbarPos { top: number; left: number }
@@ -24,7 +24,7 @@ const BLOCK_BTNS: { type: BlockType; label: string; title: string }[] = [
 
 export function FloatingFormatPlugin() {
   const [editor] = useLexicalComposerContext()
-  const { isBold, isItalic, isUnderline, isStrikethrough, isCode, blockType } = useEditorUI()
+  const { isBold, isItalic, isUnderline, isStrikethrough, isCode, blockType } = useEditorFormat()
   const [pos, setPos] = useState<ToolbarPos | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
 

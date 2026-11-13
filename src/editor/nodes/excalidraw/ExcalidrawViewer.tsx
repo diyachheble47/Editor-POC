@@ -23,9 +23,26 @@ interface Props {
 export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) {
   const [editor] = useLexicalComposerContext()
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isActive, setIsActive] = useState(false)
   const inlineAPIRef = useRef<ExcalidrawAPI | null>(null)
   const fullscreenAPIRef = useRef<ExcalidrawAPI | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const blockRef = useRef<HTMLDivElement>(null)
+
+  // Deactivate the canvas when the user clicks outside it — same pattern as
+  // the 3D model block, so the drawing can sit inline with text without its
+  // header bar / fullscreen button always taking up space, and so scrolling
+  // past it doesn't get captured by Excalidraw's own wheel-zoom/pan.
+  useEffect(() => {
+    if (!isActive) return
+    function onPointerDown(e: PointerEvent) {
+      if (!blockRef.current?.contains(e.target as Node)) {
+        setIsActive(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [isActive])
 
   // Debounced save from inline canvas
   function scheduleInlineSave(api: ExcalidrawAPI) {
@@ -63,25 +80,40 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
     appState: {
       ...appState,
       collaborators: new Map(),
-      viewBackgroundColor: '#ffffff',
+      // Transparent, not white — otherwise the canvas paints a solid white
+      // rectangle regardless of the block's own border/background CSS, so
+      // "borderless" mode still looks like a box sitting on the page
+      // instead of actually blending in (same reasoning as the 3D model's
+      // always-transparent WebGL background).
+      viewBackgroundColor: 'transparent',
     },
   }
 
+  // Loaded and not being interacted with: drop the header bar so the drawing
+  // can sit inline with text, just like the 3D model block does.
+  const borderless = !isActive
+
   return (
-    <div className="excalidraw-block" contentEditable={false}>
+    <div
+      ref={blockRef}
+      className={`excalidraw-block${borderless ? ' excalidraw-borderless' : ''}`}
+      contentEditable={false}
+    >
       {/* Header bar */}
-      <div className="excalidraw-bar">
-        <span className="excalidraw-icon" aria-hidden="true">✏️</span>
-        <span className="excalidraw-name">{title}</span>
-        <button
-          type="button"
-          className="excalidraw-fullscreen-btn"
-          title="Open fullscreen"
-          onClick={() => setIsFullscreen(true)}
-        >
-          ⤢
-        </button>
-      </div>
+      {!borderless && (
+        <div className="excalidraw-bar">
+          <span className="excalidraw-icon" aria-hidden="true">✏️</span>
+          <span className="excalidraw-name">{title}</span>
+          <button
+            type="button"
+            className="excalidraw-fullscreen-btn"
+            title="Open fullscreen"
+            onClick={() => setIsFullscreen(true)}
+          >
+            ⤢
+          </button>
+        </div>
+      )}
 
       {/* Inline canvas */}
       <div className="excalidraw-inline-wrap">
@@ -105,6 +137,26 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
             }}
           />
         </Suspense>
+
+        {borderless && (
+          <button
+            type="button"
+            className="excalidraw-fullscreen-btn excalidraw-fullscreen-btn--floating"
+            title="Open fullscreen"
+            onClick={() => setIsFullscreen(true)}
+          >
+            ⤢
+          </button>
+        )}
+
+        {borderless && (
+          <div
+            className="excalidraw-activate-overlay"
+            onClick={() => setIsActive(true)}
+          >
+            <span className="excalidraw-activate-hint">Click to draw</span>
+          </div>
+        )}
       </div>
 
       {/* Fullscreen overlay */}

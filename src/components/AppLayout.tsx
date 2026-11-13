@@ -4,30 +4,42 @@ import { LeftSidebar } from './LeftSidebar'
 import { RightPanel } from './RightPanel'
 import { EditorArea } from '../editor/EditorArea'
 import { useEditorUI } from '../editor/context/EditorUIContext'
+import { useDocument } from '../context/DocumentContext'
 
 export function AppLayout() {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
-  const { rightTab, update, activeMath, activeModel3d } = useEditorUI()
+  const { activeMath, activeModel3d } = useEditorUI()
+  const { restoreWarning, setRestoreWarning } = useDocument()
 
   useEffect(() => {
     if (window.innerWidth < 1100) setLeftOpen(false)
     if (window.innerWidth < 768) setRightOpen(false)
   }, [])
 
-  // Auto-switch to STEM tab when a math or 3D model block is focused
+  // Open the right panel when a math or 3D model block's properties are focused,
+  // so its editor is visible without the user having to open the panel manually.
   useEffect(() => {
-    if (activeMath) update({ rightTab: 'stem' })
-  }, [activeMath, update])
-
-  useEffect(() => {
-    if (activeModel3d) update({ rightTab: 'stem' })
-  }, [activeModel3d, update])
+    if (activeMath || activeModel3d) setRightOpen(true)
+  }, [activeMath, activeModel3d])
 
   const anyOpen = leftOpen || rightOpen
 
   return (
     <div className="app-shell">
+      {restoreWarning && (
+        <div className="restore-warning-banner" role="alert">
+          <span className="restore-warning-text">{restoreWarning}</span>
+          <button
+            type="button"
+            className="restore-warning-dismiss"
+            onClick={() => setRestoreWarning(null)}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <TopBar
         leftOpen={leftOpen}
         rightOpen={rightOpen}
@@ -39,11 +51,7 @@ export function AppLayout() {
         <main className="app-center">
           <EditorArea />
         </main>
-        <RightPanel
-          isOpen={rightOpen}
-          activeTab={rightTab}
-          onTabChange={(tab) => update({ rightTab: tab })}
-        />
+        <RightPanel isOpen={rightOpen} />
         {/* Mobile overlay — closes whichever sidebar is open */}
         {anyOpen && (
           <div

@@ -1,5 +1,5 @@
 import type { LexicalEditor } from 'lexical'
-import { $getRoot, $getSelection, $isRangeSelection, $createParagraphNode } from 'lexical'
+import { $getRoot, $getSelection, $isRangeSelection, $isElementNode, $isParagraphNode, $createParagraphNode } from 'lexical'
 import type { ElementNode } from 'lexical'
 import { $setBlocksType } from '@lexical/selection'
 import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
@@ -7,9 +7,8 @@ import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND } from '@lex
 import { $createCodeNode } from '@lexical/code-core'
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode'
 import { $createEquationNode } from './nodes/EquationNode'
-import { $createMolecule3DNode } from './nodes/Molecule3DNode'
 
-export type BlockCategory = 'basic' | 'media' | 'stem' | 'education' | 'ai'
+export type BlockCategory = 'basic' | 'layout' | 'media' | 'stem' | 'chemistry'
 export type BlockStatus = 'available' | 'coming-soon'
 
 export interface BlockDef {
@@ -23,6 +22,25 @@ export interface BlockDef {
   insert: (editor: LexicalEditor) => void
   inSlash: boolean
   inSidebar: boolean
+}
+
+// Lexical's own node.getTopLevelElementOrThrow() stops climbing as soon as
+// it hits a "shadow root" boundary — and @lexical/table's TableCellNode is
+// one, so calling it from inside a Matrix cell returns the cell's own
+// paragraph, not the whole table. This walks the *real* parent chain (plain
+// node.getParent(), unaffected by shadow-root semantics) all the way up to
+// whatever is an actual direct child of $getRoot(), however many shadow-root
+// boundaries (table cells, …) sit in between.
+function $getRealTopLevelAncestor(node: import('lexical').LexicalNode): ElementNode | null {
+  let current: import('lexical').LexicalNode | null = node
+  while (current) {
+    const parent: import('lexical').LexicalNode | null = current.getParent()
+    if (!parent || parent.getKey() === 'root') {
+      return $isElementNode(current) ? current : null
+    }
+    current = parent
+  }
+  return null
 }
 
 function insertWithBlocksType(
@@ -47,8 +65,23 @@ function insertAtEnd(
       $getRoot().selectEnd()
       selection = $getSelection()
     }
-    if ($isRangeSelection(selection)) {
-      selection.insertNodes([createNode()])
+    if (!$isRangeSelection(selection)) return
+
+    const realTopLevel = $getRealTopLevelAncestor(selection.anchor.getNode())
+    const node = createNode()
+    if (!realTopLevel) {
+      selection.insertNodes([node])
+      return
+    }
+
+    // Decorators must become their own block. Splicing one in at the cursor
+    // puts it inside the paragraph's inline content, where it renders as part
+    // of the text line instead of as a block of its own. Replacing an empty
+    // paragraph (e.g. the slash-command line) avoids leaving a blank gap.
+    if ($isParagraphNode(realTopLevel) && realTopLevel.getTextContent() === '') {
+      realTopLevel.replace(node)
+    } else {
+      realTopLevel.insertAfter(node)
     }
   })
 }
@@ -246,22 +279,10 @@ export const BLOCK_REGISTRY: BlockDef[] = [
     label: 'Chemical Equation',
     icon: '⚗',
     description: 'Chemistry equation, e.g. 2H₂ + O₂ → 2H₂O.',
-    category: 'stem',
+    category: 'chemistry',
     status: 'available',
     keywords: ['equation', 'chemistry', 'chemical', 'formula', 'reaction'],
     insert: (editor) => insertAtEnd(editor, $createEquationNode),
-    inSlash: true,
-    inSidebar: true,
-  },
-  {
-    key: 'molecule3d',
-    label: '3D Molecule',
-    icon: '🧬',
-    description: 'Molecular structure visualization.',
-    category: 'stem',
-    status: 'available',
-    keywords: ['molecule', '3d', 'structure', 'chemistry', 'model'],
-    insert: (editor) => insertAtEnd(editor, $createMolecule3DNode),
     inSlash: true,
     inSidebar: true,
   },
@@ -302,127 +323,16 @@ export const BLOCK_REGISTRY: BlockDef[] = [
     inSidebar: false,
   },
 
-  // ── EDUCATION ────────────────────────────────────────────────
-  {
-    key: 'example',
-    label: 'Example',
-    icon: '📖',
-    description: 'Worked example block.',
-    category: 'education',
-    status: 'coming-soon',
-    keywords: ['example', 'worked', 'solution'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
-    key: 'question',
-    label: 'Question',
-    icon: '❓',
-    description: 'Practice question.',
-    category: 'education',
-    status: 'coming-soon',
-    keywords: ['question', 'practice', 'exercise'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
-    key: 'quiz',
-    label: 'Quiz',
-    icon: '✅',
-    description: 'Multiple-choice quiz.',
-    category: 'education',
-    status: 'coming-soon',
-    keywords: ['quiz', 'multiple', 'choice', 'test'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
-    key: 'flashcard',
-    label: 'Flashcard',
-    icon: '🃏',
-    description: 'Flip-card for recall practice.',
-    category: 'education',
-    status: 'coming-soon',
-    keywords: ['flashcard', 'flip', 'recall'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-
-  // ── AI ───────────────────────────────────────────────────────
-  {
-    key: 'ai-generate',
-    label: 'Generate',
-    icon: '✦',
-    description: 'AI-generated content block.',
-    category: 'ai',
-    status: 'coming-soon',
-    keywords: ['generate', 'ai', 'create'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
-    key: 'ai-explain',
-    label: 'Explain',
-    icon: '✎',
-    description: 'AI explanation of selected text.',
-    category: 'ai',
-    status: 'coming-soon',
-    keywords: ['explain', 'ai'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
-    key: 'ai-summarize',
-    label: 'Summarize',
-    icon: '≡',
-    description: 'AI summary of the document.',
-    category: 'ai',
-    status: 'coming-soon',
-    keywords: ['summarize', 'summary', 'ai'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
-    key: 'ai-example',
-    label: 'Create Example',
-    icon: '✩',
-    description: 'AI-generated worked example.',
-    category: 'ai',
-    status: 'coming-soon',
-    keywords: ['example', 'ai', 'generate'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
-    key: 'ai-quiz',
-    label: 'Create Quiz',
-    icon: '⚡',
-    description: 'AI-generated quiz from selection.',
-    category: 'ai',
-    status: 'coming-soon',
-    keywords: ['quiz', 'ai', 'generate'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
 ]
 
-export const CATEGORY_ORDER: BlockCategory[] = ['basic', 'media', 'stem', 'education', 'ai']
+export const CATEGORY_ORDER: BlockCategory[] = ['basic', 'layout', 'media', 'stem', 'chemistry']
 
 export const CATEGORY_LABELS: Record<BlockCategory, string> = {
   basic: 'Basic',
+  layout: 'Layout',
   media: 'Media',
   stem: 'STEM',
-  education: 'Education',
-  ai: 'AI',
+  chemistry: 'Chemistry',
 }
 
 // ── Registration API ──────────────────────────────────────────────

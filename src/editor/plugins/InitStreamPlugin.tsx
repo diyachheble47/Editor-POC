@@ -9,31 +9,19 @@ import {
 } from 'lexical'
 import type { NodeKey } from 'lexical'
 import { MOCK_DOCUMENT_PARAGRAPHS } from '../mockDocument'
-import { EDITOR_STORAGE_KEY as STORAGE_KEY } from './AutoSavePlugin'
+import { useDocument, docCorruptedBackupKey } from '../../context/DocumentContext'
+import { getSegment0State, deleteSegment0State } from '../../storage/documentRepo'
+
 const CHUNK_SIZE = 4
 const TICK_MS = 25
 
 export function InitStreamPlugin() {
   const [editor] = useLexicalComposerContext()
+  const { activeDocId, activeDocSeedDemo, setRestoreWarning } = useDocument()
 
   useEffect(() => {
-    // Restore saved state if it exists
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      try {
-        editor.setEditorState(editor.parseEditorState(saved))
-        return
-      } catch {
-        localStorage.removeItem(STORAGE_KEY)
-      }
-    }
-
-    // Clear any content from a previous cancelled run (handles React StrictMode double-invoke)
-    editor.update(() => {
-      $getRoot().clear()
-    })
-
     let cancelled = false
+    const backupKey = docCorruptedBackupKey(activeDocId)
 
     async function streamDocument() {
       for (const text of MOCK_DOCUMENT_PARAGRAPHS) {
@@ -63,11 +51,68 @@ export function InitStreamPlugin() {
       }
     }
 
-    streamDocument()
+    async function init() {
+      // Restore saved state from Dexie if it exists
+      const saved = await getSegment0State(activeDocId)
+      if (cancelled) return
+
+      if (saved !== null) {
+        try {
+          const state = saved as Parameters<typeof editor.parseEditorState>[0]
+          editor.setEditorState(editor.parseEditorState(state))
+          return
+        } catch (err) {
+          // Back up the unparseable state instead of deleting it outright —
+          // a document isn't silently destroyed just because (for example)
+          // it references a node type that's since been removed or renamed.
+          // It stays recoverable from localStorage/devtools even though the
+          // editor itself can't open it.
+          try {
+            localStorage.setItem(backupKey, JSON.stringify({
+              savedAt: new Date().toISOString(),
+              error: err instanceof Error ? err.message : String(err),
+              state: saved,
+            }))
+          } catch {
+            // backup best-effort; still proceed to clear the unusable primary state
+          }
+          await deleteSegment0State(activeDocId)
+          if (cancelled) return
+          setRestoreWarning(
+            'This document could not be restored — it may reference a feature that changed. ' +
+            'A backup copy was kept in local storage under "' + backupKey + '" instead of being deleted. ' +
+            (activeDocSeedDemo
+              ? 'Showing the sample document below; your actual content was not overwritten yet.'
+              : 'Starting from a blank document; your actual content was not overwritten yet.'),
+          )
+        }
+      }
+
+      if (cancelled) return
+
+      // Clear any content from a previous cancelled run (handles React StrictMode double-invoke)
+      editor.update(() => {
+        $getRoot().clear()
+      })
+
+      // Only the one document seeded on a completely fresh install streams the
+      // demo content — every other new document (via "New document") starts
+      // genuinely blank.
+      if (!activeDocSeedDemo) {
+        editor.update(() => {
+          $getRoot().append($createParagraphNode())
+        })
+        return
+      }
+
+      await streamDocument()
+    }
+
+    init()
     return () => {
       cancelled = true
     }
-  }, [editor])
+  }, [editor, activeDocId, activeDocSeedDemo, setRestoreWarning])
 
   return null
 }

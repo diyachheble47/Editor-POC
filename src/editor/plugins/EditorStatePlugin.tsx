@@ -12,6 +12,7 @@ import { $isHeadingNode, $isQuoteNode } from '@lexical/rich-text'
 import { $isListNode } from '@lexical/list'
 import { $isCodeNode } from '@lexical/code-core'
 import { useEditorUI } from '../context/EditorUIContext'
+import { useEditorFormat } from '../context/EditorFormatContext'
 import type { BlockType } from '../context/EditorUIContext'
 
 function resolveBlockType(selection: RangeSelection): BlockType {
@@ -29,19 +30,22 @@ function resolveBlockType(selection: RangeSelection): BlockType {
 export function EditorStatePlugin() {
   const [editor] = useLexicalComposerContext()
   const { update } = useEditorUI()
+  const { updateFormat } = useEditorFormat()
 
   useEffect(() => {
-    // Expose the editor instance so TopBar can dispatch undo/redo
+    // Expose the editor instance so TopBar can dispatch undo/redo. This is
+    // the only field from the slow-changing panel context set here — it's
+    // set once and never again, unlike everything below.
     update({ editor })
 
     const unregUndo = editor.registerCommand(
       CAN_UNDO_COMMAND,
-      (canUndo) => { update({ canUndo }); return false },
+      (canUndo) => { updateFormat({ canUndo }); return false },
       COMMAND_PRIORITY_LOW,
     )
     const unregRedo = editor.registerCommand(
       CAN_REDO_COMMAND,
-      (canRedo) => { update({ canRedo }); return false },
+      (canRedo) => { updateFormat({ canRedo }); return false },
       COMMAND_PRIORITY_LOW,
     )
 
@@ -49,7 +53,7 @@ export function EditorStatePlugin() {
       editorState.read(() => {
         const selection = $getSelection()
         if (!$isRangeSelection(selection)) return
-        update({
+        updateFormat({
           isBold: selection.hasFormat('bold'),
           isItalic: selection.hasFormat('italic'),
           isUnderline: selection.hasFormat('underline'),
@@ -66,7 +70,7 @@ export function EditorStatePlugin() {
       unregRedo()
       unregUpdate()
     }
-  }, [editor, update])
+  }, [editor, update, updateFormat])
 
   return null
 }

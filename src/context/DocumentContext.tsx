@@ -1,5 +1,13 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { DocumentRecord } from '../storage/db'
+import {
+  bootstrap,
+  createDocumentRecord,
+  deleteDocumentRecord,
+  setActiveDocPointer,
+  updateDocumentMeta,
+} from '../storage/documentRepo'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -11,90 +19,109 @@ export interface OutlineItem {
   text: string
 }
 
-export interface VersionEntry {
-  id: string
-  title: string
-  savedAt: string   // ISO string
-  editorStateJson: string
-}
+// The document list/metadata type is now the Dexie record shape directly
+// (see src/storage/db.ts) — kept as an alias so existing imports of
+// `DocEntry` (none outside this file today, but harmless to keep) still
+// resolve.
+export type DocEntry = DocumentRecord
 
-// ── Storage ──────────────────────────────────────────────────────────────────
-
-const DOC_META_KEY = 'tnb-doc-meta'
-const VERSIONS_KEY = 'tnb-versions'
-const MAX_VERSIONS = 10
-
-interface StoredMeta {
-  title: string
-  lastSaved: string
-  wordCount: number
-}
-
-function readMeta(): StoredMeta | null {
-  try {
-    const raw = localStorage.getItem(DOC_META_KEY)
-    return raw ? (JSON.parse(raw) as StoredMeta) : null
-  } catch {
-    return null
-  }
-}
-
-function readVersions(): VersionEntry[] {
-  try {
-    const raw = localStorage.getItem(VERSIONS_KEY)
-    return raw ? (JSON.parse(raw) as VersionEntry[]) : []
-  } catch {
-    return []
-  }
+export function docCorruptedBackupKey(id: string): string {
+  return `lexical-doc-state-corrupted-backup:${id}`
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
 interface DocumentContextValue {
+  // True once the initial Dexie bootstrap (including one-time migration off
+  // the old localStorage scheme, if needed) has resolved. EditorRoot in
+  // App.tsx doesn't mount the Lexical editor until this is true, so
+  // InitStreamPlugin/AutoSavePlugin never run against a not-yet-real
+  // activeDocId.
+  ready: boolean
   title: string
   setTitle: (title: string) => void
   saveStatus: SaveStatus
   lastSaved: Date | null
   wordCount: number
   outline: OutlineItem[]
-  versions: VersionEntry[]
   setOutline: (items: OutlineItem[]) => void
   setWordCount: (n: number) => void
   markDirty: () => void
-  save: (editorStateJson: string, wc: number) => void
+  save: (wc: number) => void
+  restoreWarning: string | null
+  setRestoreWarning: (message: string | null) => void
+  documents: DocEntry[]
+  activeDocId: string
+  activeDocSeedDemo: boolean
+  createDocument: () => void
+  switchDocument: (id: string) => void
+  deleteDocument: (id: string) => void
 }
 
 const DocumentContext = createContext<DocumentContextValue>({
+  ready: false,
   title: 'Untitled',
   setTitle: () => {},
   saveStatus: 'idle',
   lastSaved: null,
   wordCount: 0,
   outline: [],
-  versions: [],
   setOutline: () => {},
   setWordCount: () => {},
   markDirty: () => {},
   save: () => {},
+  restoreWarning: null,
+  setRestoreWarning: () => {},
+  documents: [],
+  activeDocId: '',
+  activeDocSeedDemo: false,
+  createDocument: () => {},
+  switchDocument: () => {},
+  deleteDocument: () => {},
 })
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function DocumentProvider({ children }: { children: ReactNode }) {
-  const meta = readMeta()
+  const [ready, setReady] = useState(false)
+  const [documents, setDocuments] = useState<DocEntry[]>([])
+  const [activeDocId, setActiveDocId] = useState<string>('')
 
-  const [title, setTitleRaw] = useState<string>(meta?.title ?? 'Introduction to Chemistry')
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>(meta ? 'saved' : 'idle')
-  const [lastSaved, setLastSaved] = useState<Date | null>(
-    meta?.lastSaved ? new Date(meta.lastSaved) : null,
-  )
-  const [wordCount, setWordCount] = useState(meta?.wordCount ?? 0)
+  const [title, setTitleRaw] = useState<string>('Untitled')
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  const [wordCount, setWordCount] = useState(0)
   const [outline, setOutline] = useState<OutlineItem[]>([])
-  const [versions, setVersions] = useState<VersionEntry[]>(readVersions)
+  const [restoreWarning, setRestoreWarning] = useState<string | null>(null)
+  const [activeDocSeedDemo, setActiveDocSeedDemo] = useState(false)
 
-  // Stable ref so save() can always read the latest title without rebuilding
+  // Stable refs so save()/switchDocument() always read the latest values
+  // without needing to be recreated on every render.
   const titleRef = useRef(title)
   titleRef.current = title
+  const activeDocIdRef = useRef(activeDocId)
+  activeDocIdRef.current = activeDocId
+
+  // One-time async bootstrap: read Dexie, migrating off the old localStorage
+  // scheme first if Dexie is empty (documentRepo.bootstrap handles both).
+  // A ref guards against React StrictMode's dev-only double-invoke running
+  // the bootstrap/migration twice.
+  const bootstrapped = useRef(false)
+  useEffect(() => {
+    if (bootstrapped.current) return
+    bootstrapped.current = true
+
+    bootstrap().then(({ documents: docs, activeId }) => {
+      setDocuments(docs)
+      setActiveDocId(activeId)
+      const active = docs.find(d => d.id === activeId)
+      setTitleRaw(active?.title ?? 'Untitled')
+      setLastSaved(active?.lastSaved ? new Date(active.lastSaved) : null)
+      setWordCount(active?.wordCount ?? 0)
+      setActiveDocSeedDemo(active?.seedDemo ?? false)
+      setReady(true)
+    })
+  }, [])
 
   const setTitle = useCallback((t: string) => {
     setTitleRaw(t)
@@ -105,54 +132,93 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     setSaveStatus('unsaved')
   }, [])
 
-  const save = useCallback((editorStateJson: string, wc: number) => {
+  const save = useCallback((wc: number) => {
     setSaveStatus('saving')
     const now = new Date()
+    const id = activeDocIdRef.current
     const currentTitle = titleRef.current
 
-    try {
-      const meta: StoredMeta = {
-        title: currentTitle,
-        lastSaved: now.toISOString(),
-        wordCount: wc,
-      }
-      localStorage.setItem(DOC_META_KEY, JSON.stringify(meta))
-
-      // Version snapshot
-      const entry: VersionEntry = {
-        id: now.toISOString(),
-        title: currentTitle,
-        savedAt: now.toISOString(),
-        editorStateJson,
-      }
-      setVersions(prev => {
-        const next = [entry, ...prev].slice(0, MAX_VERSIONS)
-        try { localStorage.setItem(VERSIONS_KEY, JSON.stringify(next)) } catch { /* quota */ }
-        return next
+    updateDocumentMeta(id, { title: currentTitle, lastSaved: now.toISOString(), wordCount: wc })
+      .then(() => {
+        setDocuments(prev => prev.map(d =>
+          d.id === id ? { ...d, title: currentTitle, lastSaved: now.toISOString(), wordCount: wc } : d,
+        ))
+        setLastSaved(now)
+        setWordCount(wc)
+        setSaveStatus('saved')
       })
-
-      setLastSaved(now)
-      setWordCount(wc)
-      setSaveStatus('saved')
-    } catch {
-      setSaveStatus('unsaved')
-    }
+      .catch(() => setSaveStatus('unsaved'))
   }, [])
+
+  // Shared by create/switch/delete: load a given entry's metadata as the
+  // live editing state. The actual Lexical content swap happens separately
+  // — AppLayout keys the editor by activeDocId so switching remounts it,
+  // and InitStreamPlugin reads the new document's own segment fresh.
+  function activateEntry(entry: DocEntry) {
+    setActiveDocPointer(entry.id)
+    setActiveDocId(entry.id)
+    setTitleRaw(entry.title)
+    setSaveStatus('idle')
+    setLastSaved(entry.lastSaved ? new Date(entry.lastSaved) : null)
+    setWordCount(entry.wordCount)
+    setOutline([])
+    setRestoreWarning(null)
+    setActiveDocSeedDemo(entry.seedDemo ?? false)
+  }
+
+  const createDocument = useCallback(() => {
+    createDocumentRecord().then(entry => {
+      setDocuments(prev => [entry, ...prev])
+      activateEntry(entry)
+    })
+  }, [])
+
+  const switchDocument = useCallback((id: string) => {
+    setDocuments(prev => {
+      const target = prev.find(d => d.id === id)
+      if (target && target.id !== activeDocIdRef.current) activateEntry(target)
+      return prev
+    })
+  }, [])
+
+  const deleteDocument = useCallback((id: string) => {
+    deleteDocumentRecord(id).then(async () => {
+      const remaining = documents.filter(d => d.id !== id)
+      if (remaining.length > 0) {
+        setDocuments(remaining)
+        if (id === activeDocIdRef.current) activateEntry(remaining[0])
+        return
+      }
+      // Last document deleted — create a fresh empty one so there's always
+      // at least one document open.
+      const entry = await createDocumentRecord()
+      setDocuments([entry])
+      activateEntry(entry)
+    })
+  }, [documents])
 
   return (
     <DocumentContext.Provider
       value={{
+        ready,
         title,
         setTitle,
         saveStatus,
         lastSaved,
         wordCount,
         outline,
-        versions,
         setOutline,
         setWordCount,
         markDirty,
         save,
+        restoreWarning,
+        setRestoreWarning,
+        documents,
+        activeDocId,
+        activeDocSeedDemo,
+        createDocument,
+        switchDocument,
+        deleteDocument,
       }}
     >
       {children}

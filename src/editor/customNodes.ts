@@ -11,6 +11,12 @@ import './nodes/callout'
 import './nodes/math'
 import './nodes/model3d'
 import './nodes/excalidraw'
+import './nodes/columns'
+import './nodes/matrix'
+import './nodes/graph'
+import './nodes/geometry'
+import './nodes/molecule'
+import './nodes/spreadsheet'
 
 // Future nodes (uncomment when implemented):
 // import './nodes/chemistry'

@@ -234,24 +234,29 @@ describe('Registration API', () => {
     expect(countAfter).toBe(countBefore)
   })
 
-  test('registerBlock upserts chemistry by key', async () => {
-    await import('./index')  // trigger self-registration
+  test('registerBlock upserts an arbitrary key rather than duplicating it', async () => {
+    // math/index.ts no longer self-registers a 'chemistry' block (it opened
+    // the same math-only editor, which was confusing labeled as chemistry —
+    // the guided "Chemical Equation" block is the real chemistry editor).
+    // This test now just exercises the upsert-by-key behavior directly.
     const { registerBlock, BLOCK_REGISTRY } = await import('../../blockRegistry')
-    const countBefore = BLOCK_REGISTRY.filter(b => b.key === 'chemistry').length
-    expect(countBefore).toBeGreaterThanOrEqual(1)
-    registerBlock({
-      key: 'chemistry',
-      label: 'Chemistry',
+    const def = {
+      key: 'test-upsert-key',
+      label: 'Test',
       icon: '⚗',
       description: 'test',
-      category: 'stem',
-      status: 'available',
+      category: 'stem' as const,
+      status: 'available' as const,
       keywords: [],
       insert: () => {},
       inSlash: true,
       inSidebar: true,
-    })
-    const countAfter = BLOCK_REGISTRY.filter(b => b.key === 'chemistry').length
-    expect(countAfter).toBe(countBefore)
+    }
+    registerBlock(def)
+    const countBefore = BLOCK_REGISTRY.filter(b => b.key === 'test-upsert-key').length
+    expect(countBefore).toBe(1)
+    registerBlock(def)
+    const countAfter = BLOCK_REGISTRY.filter(b => b.key === 'test-upsert-key').length
+    expect(countAfter).toBe(1)
   })
 })

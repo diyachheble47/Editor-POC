@@ -11,6 +11,7 @@ import {
   COMMAND_PRIORITY_HIGH,
   $getSelection,
   $isRangeSelection,
+  $isTextNode,
 } from 'lexical'
 import {
   BLOCK_REGISTRY,
@@ -57,9 +58,17 @@ export function SlashCommandPlugin() {
 
   const checkForTriggerMatch = useBasicTypeaheadTriggerMatch('/', { minLength: 0 })
 
-  // Only available blocks go into options — these drive keyboard navigation
+  // Only available blocks go into options — these drive keyboard navigation.
+  // Must be ordered the same way the menu is rendered below (grouped by
+  // CATEGORY_ORDER, not raw registry order) — otherwise `options[myIdx]` in
+  // onClick points at the wrong block entirely. Custom blocks (e.g. Columns)
+  // get pushed onto the end of BLOCK_REGISTRY when they self-register, which
+  // doesn't match their displayed category position, so this can't just
+  // filter the registry in place.
   const options = useMemo(() => {
-    const available = BLOCK_REGISTRY.filter(b => b.inSlash && b.status === 'available')
+    const available = CATEGORY_ORDER.flatMap(cat =>
+      BLOCK_REGISTRY.filter(b => b.category === cat && b.inSlash && b.status === 'available'),
+    )
     const filtered = queryString
       ? available.filter(b =>
           b.label.toLowerCase().includes(queryString.toLowerCase()) ||
@@ -83,11 +92,23 @@ export function SlashCommandPlugin() {
   const onSelectOption = useCallback(
     (
       selectedOption: SlashOption,
-      nodeToRemove: import('lexical').TextNode | null,
+      _nodeToRemove: import('lexical').TextNode | null,
       closeMenu: () => void,
     ) => {
       editor.update(() => {
-        nodeToRemove?.remove()
+        // Remove the whole "/query" typed at the cursor. Relying on the
+        // typeahead's nodeToRemove left fragments behind (e.g. a stray "/h"
+        // before a heading) when the query contained a space.
+        const sel = $getSelection()
+        if ($isRangeSelection(sel) && sel.isCollapsed() && sel.anchor.offset > 0) {
+          const node = sel.anchor.getNode()
+          if ($isTextNode(node)) {
+            const slashIdx = node.getTextContent().lastIndexOf('/', sel.anchor.offset - 1)
+            if (slashIdx !== -1) {
+              node.spliceText(slashIdx, sel.anchor.offset - slashIdx, '', true)
+            }
+          }
+        }
         closeMenu()
       })
       selectedOption.block.insert(editor)
