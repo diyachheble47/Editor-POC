@@ -152,6 +152,11 @@ export class MathNode extends DecoratorNode<React.ReactElement> {
 
   // ── DOM host (Lexical owns the outer div; React owns the inside) ─
 
+  // Display math is a block; inline math stays inline in its paragraph.
+  isInline(): boolean {
+    return !this.__displayMode
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     return document.createElement('div')
   }

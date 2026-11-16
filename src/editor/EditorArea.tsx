@@ -8,7 +8,7 @@ import { TablePlugin } from '@lexical/react/LexicalTablePlugin'
 import { SlashCommandPlugin } from './SlashCommandPlugin'
 import { MatrixPickerPlugin, MatrixControlsPlugin } from './nodes/matrix'
 import { InitStreamPlugin } from './plugins/InitStreamPlugin'
-import { AutoSavePlugin } from './plugins/AutoSavePlugin'
+import { SavePlugin } from './plugins/SavePlugin'
 import { BlockControlsPlugin } from './plugins/BlockControlsPlugin'
 import { BlockMovementPlugin } from './plugins/BlockMovementPlugin'
 import { ColumnsPlugin } from './plugins/ColumnsPlugin'
@@ -62,7 +62,7 @@ export function EditorArea() {
           <MatrixControlsPlugin />
 
           {/* Persistence */}
-          <AutoSavePlugin />
+          <SavePlugin />
           <InitStreamPlugin />
 
           {/* Document intelligence */}

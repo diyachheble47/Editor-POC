@@ -6,10 +6,11 @@
 // ~5-10MB localStorage-per-origin quota outright on a single
 // reasonably-sized model (with the failure silently swallowed).
 //
-// IndexedDB has a much larger, browser-managed quota and stores Blobs
-// natively (no base64 inflation, no synchronous main-thread writes). Nodes
+// IndexedDB stores Blobs natively (no base64 inflation). Nodes
 // keep only a small asset-id string in their serialized state
 // (see ASSET_URL_PREFIX below) and resolve it to a Blob here at render time.
+
+import { deleteServerAsset, downloadServerAsset, uploadServerAsset } from '../storage/api'
 
 const DB_NAME = 'teacher-notebook-assets'
 const DB_VERSION = 1
@@ -32,7 +33,7 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise
 }
 
-export async function saveAsset(id: string, blob: Blob): Promise<void> {
+async function putLocal(id: string, blob: Blob): Promise<void> {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
@@ -42,7 +43,7 @@ export async function saveAsset(id: string, blob: Blob): Promise<void> {
   })
 }
 
-export async function getAsset(id: string): Promise<Blob | null> {
+async function getLocal(id: string): Promise<Blob | null> {
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readonly')
@@ -52,14 +53,37 @@ export async function getAsset(id: string): Promise<Blob | null> {
   })
 }
 
+// Models are stored in this browser's IndexedDB (documents are on the
+// backend). A copy is also pushed to the backend in the background, so a
+// browser that doesn't have the model can still fetch it; if the server is
+// down the local save is unaffected.
+export async function saveAsset(id: string, blob: Blob): Promise<void> {
+  await putLocal(id, blob)
+  uploadServerAsset(id, blob).catch(() => { /* local copy is the one that matters */ })
+}
+
+// Local copy first; otherwise try the backend and keep the result locally.
+export async function getAsset(id: string): Promise<Blob | null> {
+  const local = await getLocal(id)
+  if (local) return local
+  try {
+    const remote = await downloadServerAsset(id)
+    await putLocal(id, remote)
+    return remote
+  } catch {
+    return null
+  }
+}
+
 export async function deleteAsset(id: string): Promise<void> {
   const db = await openDB()
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
     tx.objectStore(STORE_NAME).delete(id)
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })
+  deleteServerAsset(id).catch(() => { /* server offline: it keeps an unreferenced copy */ })
 }
 
 export async function listAssetIds(): Promise<string[]> {

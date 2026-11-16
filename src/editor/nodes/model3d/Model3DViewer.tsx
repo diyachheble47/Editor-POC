@@ -9,6 +9,7 @@ import { useEditorUI } from '../../context/EditorUIContext'
 import { $getModel3DNodeByKey } from './Model3DNode'
 import type { Model3DAnimationConfig, Model3DDisplayConfig, Model3DCamera } from './Model3DNode'
 import type { NodeKey } from 'lexical'
+import { registerRenderer, unregisterRenderer } from '../../../dev/perfStats'
 import { saveAsset, getAsset, isAssetUrl, assetIdFromUrl, assetUrlFor } from '../../assetStore'
 
 interface Props {
@@ -70,6 +71,7 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
         }
       })
     }
+    if (rendererRef.current) unregisterRenderer(rendererRef.current)
     rendererRef.current?.dispose()
     // Removes every child, not just the first — a defensive measure in
     // case more than one canvas ever ends up appended here for any reason.
@@ -137,6 +139,7 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
       renderer.outputColorSpace = THREE.SRGBColorSpace
       container.appendChild(renderer.domElement)
       rendererRef.current = renderer
+      registerRenderer(renderer)
 
       const scene = new THREE.Scene()
       // Always transparent so the model sits directly on the page — no box around it
@@ -198,11 +201,23 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
         if (!pendingCamera) return
         const cam = pendingCamera
         pendingCamera = null
+        // discrete: commit now, so a Save that triggered this flush reads the
+        // new camera instead of the state from before it.
         editor.update(() => {
           $getModel3DNodeByKey(nodeKey)?.setCamera(cam)
-        })
+        }, { discrete: true })
       }
+      // The document's Save asks every viewer to write its not-yet-committed
+      // camera first (the 500ms debounce below would otherwise lose a view
+      // the user saved right after orbiting).
+      window.addEventListener('tnb:flush-pending', flushCameraSave)
+      let userOrbiting = false
+      const onOrbitStart = () => { userOrbiting = true }
       function scheduleCameraSave() {
+        // Tell the document it has unsaved changes right away, not 500ms later.
+        // (Only for the user's own orbiting — setting up the initial view
+        // also fires 'change', and opening a document isn't an edit.)
+        if (userOrbiting) window.dispatchEvent(new Event('tnb:dirty'))
         pendingCamera = {
           pos: [camera.position.x, camera.position.y, camera.position.z],
           target: [controls.target.x, controls.target.y, controls.target.z],
@@ -220,7 +235,7 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
       async function resolveLoadUrl(): Promise<string> {
         if (!isAssetUrl(modelUrl)) return modelUrl
         const blob = await getAsset(assetIdFromUrl(modelUrl))
-        if (!blob) throw new Error('Model file not found in local storage — it may have been cleared.')
+        if (!blob) throw new Error('Model file not found — it may have been cleared from this browser.')
         const url = URL.createObjectURL(blob)
         objectUrlToRevoke = url
         return url
@@ -276,6 +291,7 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
         // Listen only from here on — applying the framing above via
         // controls.update() also fires 'change', and saving straight back
         // the value just applied would be a pointless no-op write.
+        controls.addEventListener('start', onOrbitStart)
         controls.addEventListener('change', scheduleCameraSave)
 
         setLoadState('ready')
@@ -379,6 +395,8 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
       cancelBuild = () => {
         cancelled = true
         flushCameraSave()
+        window.removeEventListener('tnb:flush-pending', flushCameraSave)
+        controls.removeEventListener('start', onOrbitStart)
         controls.removeEventListener('change', scheduleCameraSave)
         if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke)
         ro.disconnect()

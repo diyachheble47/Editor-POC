@@ -13,18 +13,20 @@ interface TopBarProps {
 export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: TopBarProps) {
   const { editor } = useEditorUI()
   const { canUndo, canRedo } = useEditorFormat()
-  const { title, saveStatus, lastSaved, wordCount } = useDocument()
+  const { title, saveStatus, saveError, save, lastSaved, wordCount } = useDocument()
 
   const saveLabel =
     saveStatus === 'saving'  ? 'Saving…' :
     saveStatus === 'saved'   ? (lastSaved ? `Saved ${formatRelativeTime(lastSaved)}` : 'Saved') :
     saveStatus === 'unsaved' ? 'Unsaved changes' :
+    saveStatus === 'error'   ? 'Not saved' :
     ''
 
   const saveDotClass =
     saveStatus === 'saving'  ? 'topbar-save-dot saving' :
     saveStatus === 'saved'   ? 'topbar-save-dot saved' :
     saveStatus === 'unsaved' ? 'topbar-save-dot unsaved' :
+    saveStatus === 'error'   ? 'topbar-save-dot unsaved' :
     'topbar-save-dot'
 
   return (
@@ -65,6 +67,19 @@ export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: Top
             {saveLabel}
           </span>
         )}
+        {saveError && (
+          <span className="topbar-sync-status conflict" role="alert">{saveError}</span>
+        )}
+
+        <button
+          type="button"
+          className="topbar-share-btn"
+          disabled={saveStatus === 'saving' || saveStatus === 'idle' || saveStatus === 'saved'}
+          onClick={save}
+          title="Save (Ctrl+S)"
+        >
+          {saveStatus === 'saving' ? 'Saving…' : 'Save'}
+        </button>
 
         <span className="topbar-divider" aria-hidden="true" />
 

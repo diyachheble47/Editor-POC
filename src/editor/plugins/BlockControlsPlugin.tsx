@@ -321,6 +321,9 @@ export function BlockControlsPlugin() {
       if (e.key !== 'Delete' && e.key !== 'Backspace') return
       const key = selectedKeyRef.current
       if (!key) return
+      // A circuit's own canvas (React Flow) handles Delete for its selected
+      // parts and wires, so the block itself must not be removed by the key.
+      if (e.target instanceof Element && e.target.closest('.circuit-block')) return
       // Only real form fields (a spreadsheet cell, etc.) take priority over
       // deleting the selected block — NOT document.activeElement.isContentEditable,
       // which is true for the whole Lexical root and would silently defeat this

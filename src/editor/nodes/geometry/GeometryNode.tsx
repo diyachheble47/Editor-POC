@@ -349,6 +349,11 @@ export class GeometryNode extends DecoratorNode<React.ReactElement> {
     self.__polygons = [...self.__polygons, ids]
   }
 
+  // Block-level: the default (true) makes Lexical wrap this in a paragraph.
+  isInline(): boolean {
+    return false
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     return document.createElement('div')
   }

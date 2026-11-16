@@ -12,11 +12,17 @@ import './App.css'
 // instead of trying to reuse a composer instance across unrelated
 // documents' node trees.
 function EditorRoot() {
-  const { ready, activeDocId } = useDocument()
-  // Don't mount the editor (or InitStreamPlugin/AutoSavePlugin inside it)
-  // until the Dexie bootstrap — including the one-time migration off the
-  // old localStorage scheme, if needed — has resolved and activeDocId is a
-  // real document id.
+  const { ready, loadError, retryLoad, activeDocId } = useDocument()
+  // Don't mount the editor (or the plugins inside it) until the document list
+  // has loaded from the server and activeDocId is a real document id.
+  if (loadError) {
+    return (
+      <div role="alert" style={{ padding: 32 }}>
+        <p>{loadError}</p>
+        <button type="button" onClick={retryLoad}>Retry</button>
+      </div>
+    )
+  }
   if (!ready) return null
 
   return (

@@ -278,6 +278,11 @@ export class MoleculeNode extends DecoratorNode<React.ReactElement> {
     self.__bonds = [...self.__bonds, ...ringBonds]
   }
 
+  // Block-level: the default (true) makes Lexical wrap this in a paragraph.
+  isInline(): boolean {
+    return false
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     return document.createElement('div')
   }

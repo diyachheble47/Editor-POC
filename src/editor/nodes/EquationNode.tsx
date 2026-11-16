@@ -111,6 +111,11 @@ export class EquationNode extends DecoratorNode<React.ReactElement> {
     this.getWritable().__equation = equation
   }
 
+  // Block-level: the default (true) makes Lexical wrap this in a paragraph.
+  isInline(): boolean {
+    return false
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     return document.createElement('div')
   }

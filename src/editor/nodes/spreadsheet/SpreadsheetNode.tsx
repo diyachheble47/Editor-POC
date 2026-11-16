@@ -171,6 +171,11 @@ export class SpreadsheetNode extends DecoratorNode<React.ReactElement> {
     self.__cells = self.__cells.map((r) => r.slice(0, -1))
   }
 
+  // Block-level: the default (true) makes Lexical wrap this in a paragraph.
+  isInline(): boolean {
+    return false
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     return document.createElement('div')
   }

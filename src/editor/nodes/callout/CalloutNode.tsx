@@ -168,6 +168,11 @@ export class CalloutNode extends DecoratorNode<React.ReactElement> {
 
   // ── DOM host element (Lexical owns the outer div, React owns the inside) ──
 
+  // Block-level: the default (true) makes Lexical wrap this in a paragraph.
+  isInline(): boolean {
+    return false
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     return document.createElement('div')
   }

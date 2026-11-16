@@ -278,6 +278,11 @@ export class GraphNode extends DecoratorNode<React.ReactElement> {
     self.__functions = self.__functions.filter((_, i) => i !== index)
   }
 
+  // Block-level: the default (true) makes Lexical wrap this in a paragraph.
+  isInline(): boolean {
+    return false
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     return document.createElement('div')
   }

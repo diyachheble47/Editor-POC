@@ -20,6 +20,8 @@ import {
   type BlockDef,
 } from './blockRegistry'
 
+const SEARCH_DEBOUNCE_MS = 200
+
 class SlashOption extends MenuOption {
   block: BlockDef
   constructor(block: BlockDef) {
@@ -34,6 +36,20 @@ export function SlashCommandPlugin() {
   const queryStringRef = useRef<string | null>(null)
 
   useEffect(() => { queryStringRef.current = queryString }, [queryString])
+
+  // The list filters on a debounced copy of the query, so it waits for a pause
+  // in typing instead of re-filtering on every keystroke. queryString itself
+  // stays exact (the Escape handler needs its real length). An empty query
+  // (just "/") applies immediately so the full menu opens without a delay.
+  const [searchQuery, setSearchQuery] = useState<string | null>(null)
+  useEffect(() => {
+    if (!queryString) {
+      setSearchQuery(queryString)
+      return
+    }
+    const t = setTimeout(() => setSearchQuery(queryString), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [queryString])
 
   // On Escape while menu is open: delete the '/' + typed query so it doesn't litter the doc
   useEffect(() => {
@@ -69,25 +85,25 @@ export function SlashCommandPlugin() {
     const available = CATEGORY_ORDER.flatMap(cat =>
       BLOCK_REGISTRY.filter(b => b.category === cat && b.inSlash && b.status === 'available'),
     )
-    const filtered = queryString
+    const filtered = searchQuery
       ? available.filter(b =>
-          b.label.toLowerCase().includes(queryString.toLowerCase()) ||
-          b.keywords?.some(k => k.includes(queryString.toLowerCase()))
+          b.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          b.keywords?.some(k => k.includes(searchQuery.toLowerCase()))
         )
       : available
     return filtered.map(b => new SlashOption(b))
-  }, [queryString])
+  }, [searchQuery])
 
   // All blocks matching query — used for rendering (includes coming-soon)
   const allMatchingBlocks = useMemo(() => {
     const all = BLOCK_REGISTRY.filter(b => b.inSlash)
-    return queryString
+    return searchQuery
       ? all.filter(b =>
-          b.label.toLowerCase().includes(queryString.toLowerCase()) ||
-          b.keywords?.some(k => k.includes(queryString.toLowerCase()))
+          b.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          b.keywords?.some(k => k.includes(searchQuery.toLowerCase()))
         )
       : all
-  }, [queryString])
+  }, [searchQuery])
 
   const onSelectOption = useCallback(
     (
@@ -103,9 +119,20 @@ export function SlashCommandPlugin() {
         if ($isRangeSelection(sel) && sel.isCollapsed() && sel.anchor.offset > 0) {
           const node = sel.anchor.getNode()
           if ($isTextNode(node)) {
-            const slashIdx = node.getTextContent().lastIndexOf('/', sel.anchor.offset - 1)
+            const text = node.getTextContent()
+            const slashIdx = text.lastIndexOf('/', sel.anchor.offset - 1)
             if (slashIdx !== -1) {
-              node.spliceText(slashIdx, sel.anchor.offset - slashIdx, '', true)
+              const remaining = text.slice(0, slashIdx) + text.slice(sel.anchor.offset)
+              if (remaining === '') {
+                // Lexical drops an emptied text node, which would leave the
+                // selection pointing at a removed node and make the insert
+                // below fail silently. Move the cursor to its paragraph first.
+                const parent = node.getParentOrThrow()
+                parent.selectStart()
+                node.remove()
+              } else {
+                node.spliceText(slashIdx, sel.anchor.offset - slashIdx, '', true)
+              }
             }
           }
         }

@@ -1,17 +1,12 @@
-// Finds and removes 3D-model asset blobs (in the raw IndexedDB store owned
-// by assetStore.ts) that no document currently references — e.g. a model
-// that was replaced on its node (the stable-key overwrite in
-// Model3DViewer.loadFile covers that case) or whose block got deleted
-// entirely, which was never cleaned up (flagged as a known follow-up when
-// the asset store was introduced — TASKS.md Task 4).
+// Finds and removes 3D-model files on the server that no saved document
+// references — e.g. a block that was deleted, or an upload whose document was
+// never saved.
 //
-// Deliberately NOT wired into automatic startup cleanup: an asset upload
-// that hasn't been autosaved yet (AutoSavePlugin debounces 1.5s) would look
-// unreferenced for that window and could be swept as an orphan right after
-// the user uploaded it — worse than the problem this fixes. This is exposed
-// as an explicit, user-triggered action only.
+// Deliberately NOT run automatically: a model uploaded into a document that
+// hasn't been saved yet looks unreferenced and would be swept right after the
+// upload. This is an explicit, user-triggered action only.
 import { listAssetIds, deleteAsset } from '../editor/assetStore'
-import { listDocuments, getSegment0State } from './documentRepo'
+import { listDocuments, loadDocumentState } from './documentStore'
 
 const ASSET_REF_PATTERN = /idb-asset:([a-zA-Z0-9-]+)/g
 
@@ -26,7 +21,7 @@ export async function findOrphanedAssetIds(): Promise<OrphanScanResult> {
   const referenced = new Set<string>()
 
   for (const doc of documents) {
-    const state = await getSegment0State(doc.id)
+    const state = await loadDocumentState(doc.id)
     if (state === null) continue
     const json = JSON.stringify(state)
     for (const match of json.matchAll(ASSET_REF_PATTERN)) {

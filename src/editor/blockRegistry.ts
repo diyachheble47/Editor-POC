@@ -34,6 +34,7 @@ export interface BlockDef {
 function $getRealTopLevelAncestor(node: import('lexical').LexicalNode): ElementNode | null {
   let current: import('lexical').LexicalNode | null = node
   while (current) {
+    if (current.getKey() === 'root') return null
     const parent: import('lexical').LexicalNode | null = current.getParent()
     if (!parent || parent.getKey() === 'root') {
       return $isElementNode(current) ? current : null
@@ -70,7 +71,7 @@ function insertAtEnd(
     const realTopLevel = $getRealTopLevelAncestor(selection.anchor.getNode())
     const node = createNode()
     if (!realTopLevel) {
-      selection.insertNodes([node])
+      $getRoot().append(node)
       return
     }
 
@@ -78,10 +79,20 @@ function insertAtEnd(
     // puts it inside the paragraph's inline content, where it renders as part
     // of the text line instead of as a block of its own. Replacing an empty
     // paragraph (e.g. the slash-command line) avoids leaving a blank gap.
+    realTopLevel.insertAfter(node)
+    // Always leave a paragraph after the block with the cursor in it. Without
+    // it the selection can end up pointing at a node that was just removed
+    // (the empty slash line), which throws "selection has been lost" and
+    // leaves the editor unable to open the slash menu afterwards. It also
+    // gives the user somewhere to keep typing below the block.
+    let after = node.getNextSibling()
+    if (!$isParagraphNode(after)) {
+      after = $createParagraphNode()
+      node.insertAfter(after)
+    }
+    after.selectStart()
     if ($isParagraphNode(realTopLevel) && realTopLevel.getTextContent() === '') {
-      realTopLevel.replace(node)
-    } else {
-      realTopLevel.insertAfter(node)
+      realTopLevel.remove()
     }
   })
 }

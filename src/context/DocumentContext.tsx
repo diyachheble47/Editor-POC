@@ -1,17 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { DocumentRecord } from '../storage/db'
 import {
   bootstrap,
-  createDocumentRecord,
-  deleteDocumentRecord,
+  createDocument as createDocumentOnServer,
+  deleteDocument as deleteDocumentOnServer,
+  saveDocument,
   setActiveDocPointer,
-  updateDocumentMeta,
-} from '../storage/documentRepo'
+} from '../storage/documentStore'
+import type { DocumentRecord } from '../storage/documentStore'
+import { ApiError } from '../storage/api'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-export type SaveStatus = 'idle' | 'unsaved' | 'saving' | 'saved'
+export type SaveStatus = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error'
 
 export interface OutlineItem {
   key: string
@@ -19,11 +20,13 @@ export interface OutlineItem {
   text: string
 }
 
-// The document list/metadata type is now the Dexie record shape directly
-// (see src/storage/db.ts) — kept as an alias so existing imports of
-// `DocEntry` (none outside this file today, but harmless to keep) still
-// resolve.
 export type DocEntry = DocumentRecord
+
+/** What the editor hands over when the user saves. */
+export interface DocumentSnapshot {
+  state: unknown
+  wordCount: number
+}
 
 export function docCorruptedBackupKey(id: string): string {
   return `lexical-doc-state-corrupted-backup:${id}`
@@ -32,27 +35,33 @@ export function docCorruptedBackupKey(id: string): string {
 // ── Context ───────────────────────────────────────────────────────────────────
 
 interface DocumentContextValue {
-  // True once the initial Dexie bootstrap (including one-time migration off
-  // the old localStorage scheme, if needed) has resolved. EditorRoot in
-  // App.tsx doesn't mount the Lexical editor until this is true, so
-  // InitStreamPlugin/AutoSavePlugin never run against a not-yet-real
-  // activeDocId.
+  // True once the document list has loaded from the server. EditorRoot in
+  // App.tsx doesn't mount the Lexical editor until this is true, so the
+  // plugins never run against a not-yet-real activeDocId.
   ready: boolean
+  // Set when the server couldn't be reached on load; the app has no local
+  // copy to fall back on.
+  loadError: string | null
+  retryLoad: () => void
   title: string
   setTitle: (title: string) => void
   saveStatus: SaveStatus
+  saveError: string | null
   lastSaved: Date | null
   wordCount: number
   outline: OutlineItem[]
   setOutline: (items: OutlineItem[]) => void
   setWordCount: (n: number) => void
   markDirty: () => void
-  save: (wc: number) => void
+  markClean: () => void
+  // The editor registers how to read its current state; save() calls it.
+  registerSnapshot: (fn: (() => DocumentSnapshot | null) | null) => void
+  // Explicit user save (Save button / Ctrl+S). Nothing else writes.
+  save: () => void
   restoreWarning: string | null
   setRestoreWarning: (message: string | null) => void
   documents: DocEntry[]
   activeDocId: string
-  activeDocSeedDemo: boolean
   createDocument: () => void
   switchDocument: (id: string) => void
   deleteDocument: (id: string) => void
@@ -60,21 +69,25 @@ interface DocumentContextValue {
 
 const DocumentContext = createContext<DocumentContextValue>({
   ready: false,
+  loadError: null,
+  retryLoad: () => {},
   title: 'Untitled',
   setTitle: () => {},
   saveStatus: 'idle',
+  saveError: null,
   lastSaved: null,
   wordCount: 0,
   outline: [],
   setOutline: () => {},
   setWordCount: () => {},
   markDirty: () => {},
+  markClean: () => {},
+  registerSnapshot: () => {},
   save: () => {},
   restoreWarning: null,
   setRestoreWarning: () => {},
   documents: [],
   activeDocId: '',
-  activeDocSeedDemo: false,
   createDocument: () => {},
   switchDocument: () => {},
   deleteDocument: () => {},
@@ -84,16 +97,18 @@ const DocumentContext = createContext<DocumentContextValue>({
 
 export function DocumentProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [documents, setDocuments] = useState<DocEntry[]>([])
   const [activeDocId, setActiveDocId] = useState<string>('')
 
   const [title, setTitleRaw] = useState<string>('Untitled')
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [wordCount, setWordCount] = useState(0)
   const [outline, setOutline] = useState<OutlineItem[]>([])
   const [restoreWarning, setRestoreWarning] = useState<string | null>(null)
-  const [activeDocSeedDemo, setActiveDocSeedDemo] = useState(false)
 
   // Stable refs so save()/switchDocument() always read the latest values
   // without needing to be recreated on every render.
@@ -101,121 +116,216 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   titleRef.current = title
   const activeDocIdRef = useRef(activeDocId)
   activeDocIdRef.current = activeDocId
+  const documentsRef = useRef(documents)
+  documentsRef.current = documents
+  const saveStatusRef = useRef(saveStatus)
+  saveStatusRef.current = saveStatus
+  const snapshotRef = useRef<(() => DocumentSnapshot | null) | null>(null)
+  // Bumped on every edit, so a save that finishes after the user kept typing
+  // doesn't mark those newer edits as saved.
+  const editVersionRef = useRef(0)
+  const savingRef = useRef(false)
 
-  // One-time async bootstrap: read Dexie, migrating off the old localStorage
-  // scheme first if Dexie is empty (documentRepo.bootstrap handles both).
-  // A ref guards against React StrictMode's dev-only double-invoke running
-  // the bootstrap/migration twice.
-  const bootstrapped = useRef(false)
+  // Initial load from the server. Re-runs when the user presses Retry.
   useEffect(() => {
-    if (bootstrapped.current) return
-    bootstrapped.current = true
+    let cancelled = false
+    setLoadError(null)
+    bootstrap()
+      .then(({ documents: docs, activeId }) => {
+        if (cancelled) return
+        setDocuments(docs)
+        setActiveDocId(activeId)
+        const active = docs.find(d => d.id === activeId)
+        setTitleRaw(active?.title ?? 'Untitled')
+        setLastSaved(active?.lastSaved ? new Date(active.lastSaved) : null)
+        setWordCount(active?.wordCount ?? 0)
+        setReady(true)
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError('Could not reach the server. Start the backend and try again.')
+      })
+    return () => { cancelled = true }
+  }, [loadAttempt])
 
-    bootstrap().then(({ documents: docs, activeId }) => {
-      setDocuments(docs)
-      setActiveDocId(activeId)
-      const active = docs.find(d => d.id === activeId)
-      setTitleRaw(active?.title ?? 'Untitled')
-      setLastSaved(active?.lastSaved ? new Date(active.lastSaved) : null)
-      setWordCount(active?.wordCount ?? 0)
-      setActiveDocSeedDemo(active?.seedDemo ?? false)
-      setReady(true)
-    })
+  const retryLoad = useCallback(() => setLoadAttempt(n => n + 1), [])
+
+  const markDirty = useCallback(() => {
+    editVersionRef.current++
+    setSaveStatus('unsaved')
   }, [])
+
+  // Used right after a document is opened, when loading its content itself
+  // triggers an editor update that isn't a user edit.
+  const markClean = useCallback(() => {
+    setSaveStatus(prev => (prev === 'saving' ? prev : 'idle'))
+  }, [])
+
+  // Blocks that change their state outside the editor's own update cycle
+  // (3D camera while orbiting) announce it here.
+  useEffect(() => {
+    window.addEventListener('tnb:dirty', markDirty)
+    return () => window.removeEventListener('tnb:dirty', markDirty)
+  }, [markDirty])
 
   const setTitle = useCallback((t: string) => {
     setTitleRaw(t)
-    setSaveStatus('unsaved')
+    markDirty()
+  }, [markDirty])
+
+  const registerSnapshot = useCallback((fn: (() => DocumentSnapshot | null) | null) => {
+    snapshotRef.current = fn
   }, [])
 
-  const markDirty = useCallback(() => {
-    setSaveStatus('unsaved')
-  }, [])
-
-  const save = useCallback((wc: number) => {
-    setSaveStatus('saving')
-    const now = new Date()
+  const save = useCallback(() => {
+    const snapshot = snapshotRef.current
+    if (!snapshot || savingRef.current) return
     const id = activeDocIdRef.current
+    const entry = documentsRef.current.find(d => d.id === id)
+    if (!entry) return
+
+    const snap = snapshot()
+    if (!snap) return // document still loading: nothing safe to save yet
+    const { state, wordCount: wc } = snap
+
+    savingRef.current = true
+    const versionAtStart = editVersionRef.current
+    setSaveStatus('saving')
+    setSaveError(null)
     const currentTitle = titleRef.current
 
-    updateDocumentMeta(id, { title: currentTitle, lastSaved: now.toISOString(), wordCount: wc })
-      .then(() => {
-        setDocuments(prev => prev.map(d =>
-          d.id === id ? { ...d, title: currentTitle, lastSaved: now.toISOString(), wordCount: wc } : d,
-        ))
-        setLastSaved(now)
-        setWordCount(wc)
-        setSaveStatus('saved')
+    saveDocument(id, { state, title: currentTitle, wordCount: wc, baseRevision: entry.revision })
+      .then(saved => {
+        // Update the ref right away (not on next render) so an immediate
+        // second save sends the new revision instead of a stale one.
+        documentsRef.current = documentsRef.current.map(d => (d.id === id ? saved : d))
+        setDocuments(documentsRef.current)
+        if (id === activeDocIdRef.current) {
+          setLastSaved(new Date(saved.updatedAt))
+          setWordCount(wc)
+          setSaveStatus(editVersionRef.current === versionAtStart ? 'saved' : 'unsaved')
+        }
       })
-      .catch(() => setSaveStatus('unsaved'))
+      .catch(err => {
+        setSaveError(
+          err instanceof ApiError && err.status === 409
+            ? 'This document was changed somewhere else. Reload the page to get the latest copy before saving.'
+            : 'Could not reach the server — your changes are not saved. Try again.',
+        )
+        setSaveStatus('error')
+      })
+      .finally(() => { savingRef.current = false })
   }, [])
+
+  // Ctrl/Cmd+S saves (and stops the browser's own "save page" dialog).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        save()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [save])
+
+  // Nothing is saved automatically, so warn before leaving with unsaved edits.
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (saveStatusRef.current === 'unsaved' || saveStatusRef.current === 'error') e.preventDefault()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+
+  function hasUnsavedChanges(): boolean {
+    return saveStatusRef.current === 'unsaved' || saveStatusRef.current === 'error'
+  }
+
+  function confirmDiscard(): boolean {
+    return !hasUnsavedChanges() || window.confirm('You have unsaved changes. Discard them?')
+  }
 
   // Shared by create/switch/delete: load a given entry's metadata as the
   // live editing state. The actual Lexical content swap happens separately
   // — AppLayout keys the editor by activeDocId so switching remounts it,
-  // and InitStreamPlugin reads the new document's own segment fresh.
+  // and InitStreamPlugin reads the new document's own content fresh.
   function activateEntry(entry: DocEntry) {
     setActiveDocPointer(entry.id)
     setActiveDocId(entry.id)
     setTitleRaw(entry.title)
     setSaveStatus('idle')
+    setSaveError(null)
     setLastSaved(entry.lastSaved ? new Date(entry.lastSaved) : null)
     setWordCount(entry.wordCount)
     setOutline([])
     setRestoreWarning(null)
-    setActiveDocSeedDemo(entry.seedDemo ?? false)
   }
 
   const createDocument = useCallback(() => {
-    createDocumentRecord().then(entry => {
-      setDocuments(prev => [entry, ...prev])
-      activateEntry(entry)
-    })
+    if (!confirmDiscard()) return
+    createDocumentOnServer()
+      .then(entry => {
+        setDocuments(prev => [entry, ...prev])
+        activateEntry(entry)
+      })
+      .catch(() => {
+        setSaveError('Could not reach the server — the new document was not created.')
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const switchDocument = useCallback((id: string) => {
-    setDocuments(prev => {
-      const target = prev.find(d => d.id === id)
-      if (target && target.id !== activeDocIdRef.current) activateEntry(target)
-      return prev
-    })
+    const target = documentsRef.current.find(d => d.id === id)
+    if (!target || target.id === activeDocIdRef.current) return
+    if (!confirmDiscard()) return
+    activateEntry(target)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const deleteDocument = useCallback((id: string) => {
-    deleteDocumentRecord(id).then(async () => {
-      const remaining = documents.filter(d => d.id !== id)
-      if (remaining.length > 0) {
-        setDocuments(remaining)
-        if (id === activeDocIdRef.current) activateEntry(remaining[0])
-        return
-      }
-      // Last document deleted — create a fresh empty one so there's always
-      // at least one document open.
-      const entry = await createDocumentRecord()
-      setDocuments([entry])
-      activateEntry(entry)
-    })
-  }, [documents])
+    deleteDocumentOnServer(id)
+      .then(async () => {
+        const remaining = documentsRef.current.filter(d => d.id !== id)
+        if (remaining.length > 0) {
+          setDocuments(remaining)
+          if (id === activeDocIdRef.current) activateEntry(remaining[0])
+          return
+        }
+        // Last document deleted — create a fresh empty one so there's always
+        // at least one document open.
+        const entry = await createDocumentOnServer()
+        setDocuments([entry])
+        activateEntry(entry)
+      })
+      .catch(() => {
+        setSaveError('Could not reach the server — the document was not deleted.')
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <DocumentContext.Provider
       value={{
         ready,
+        loadError,
+        retryLoad,
         title,
         setTitle,
         saveStatus,
+        saveError,
         lastSaved,
         wordCount,
         outline,
         setOutline,
         setWordCount,
         markDirty,
+        markClean,
+        registerSnapshot,
         save,
         restoreWarning,
         setRestoreWarning,
         documents,
         activeDocId,
-        activeDocSeedDemo,
         createDocument,
         switchDocument,
         deleteDocument,

@@ -17,6 +17,7 @@ import './nodes/graph'
 import './nodes/geometry'
 import './nodes/molecule'
 import './nodes/spreadsheet'
+import './nodes/circuit'
 
 // Future nodes (uncomment when implemented):
 // import './nodes/chemistry'

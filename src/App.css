@@ -2832,3 +2832,41 @@
   border-left: 1px solid var(--c-border);
   padding-left: 32px;
 }
+
+/* ── Electric circuit block ─────────────────────────────────────── */
+.circuit-block {
+  margin: 12px 0;
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: var(--r-md, 8px);
+  background: var(--c-surface, #fff);
+  overflow: hidden;
+  user-select: none;
+}
+.circuit-palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--c-border, #e5e7eb);
+}
+.circuit-palette-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 1px solid var(--c-border, #d1d5db);
+  border-radius: 6px;
+  background: var(--c-surface, #fff);
+  cursor: pointer;
+}
+.circuit-palette-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
+.circuit-palette-hint { font-size: 12px; color: var(--c-text-3, #6b7280); margin-left: 4px; }
+.circuit-canvas { height: 320px; }
+.circuit-part { position: relative; display: flex; flex-direction: column; align-items: center; }
+.circuit-symbol { color: var(--c-text, #111827); display: block; }
+.circuit-part-label { font-size: 11px; color: var(--c-text-3, #6b7280); text-align: center; }
+
+.topbar-sync-status { font-size: 12px; color: var(--c-text-3, #6b7280); margin-left: 10px; white-space: nowrap; }
+.topbar-sync-status.offline { color: #b45309; }
+.topbar-sync-status.conflict { color: #b91c1c; }
+

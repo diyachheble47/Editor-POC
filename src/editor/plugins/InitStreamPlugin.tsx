@@ -1,118 +1,61 @@
 import { useEffect } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import {
-  $createParagraphNode,
-  $createTextNode,
-  $getNodeByKey,
-  $getRoot,
-  $isParagraphNode,
-} from 'lexical'
-import type { NodeKey } from 'lexical'
-import { MOCK_DOCUMENT_PARAGRAPHS } from '../mockDocument'
-import { useDocument, docCorruptedBackupKey } from '../../context/DocumentContext'
-import { getSegment0State, deleteSegment0State } from '../../storage/documentRepo'
+import { $createParagraphNode, $getRoot, CLEAR_HISTORY_COMMAND } from 'lexical'
+import { useDocument } from '../../context/DocumentContext'
+import { streamServerDocument } from '../../storage/api'
+import { createDocumentStreamBuilder } from '../streamIntoEditor'
 
-const CHUNK_SIZE = 4
-const TICK_MS = 25
-
+// Opening a document streams its saved content from the server (Server-Sent
+// Events) and builds it in the editor as it arrives: text types in, other
+// blocks (models, equations, circuits...) appear whole. A document that was
+// never saved starts blank.
 export function InitStreamPlugin() {
   const [editor] = useLexicalComposerContext()
-  const { activeDocId, activeDocSeedDemo, setRestoreWarning } = useDocument()
+  const { activeDocId, setRestoreWarning, markClean } = useDocument()
 
   useEffect(() => {
-    let cancelled = false
-    const backupKey = docCorruptedBackupKey(activeDocId)
-
-    async function streamDocument() {
-      for (const text of MOCK_DOCUMENT_PARAGRAPHS) {
-        if (cancelled) break
-
-        let paragraphKey: NodeKey | null = null
-        editor.update(() => {
-          const paragraph = $createParagraphNode()
-          $getRoot().append(paragraph)
-          paragraphKey = paragraph.getKey()
-        })
-
-        for (let i = 0; i < text.length; i += CHUNK_SIZE) {
-          if (cancelled) break
-          const chunk = text.slice(i, i + CHUNK_SIZE)
-          await new Promise<void>((resolve) => setTimeout(resolve, TICK_MS))
-          editor.update(() => {
-            if (!paragraphKey) return
-            const node = $getNodeByKey(paragraphKey)
-            if ($isParagraphNode(node)) {
-              node.append($createTextNode(chunk))
-            }
-          })
-        }
-
-        await new Promise<void>((resolve) => setTimeout(resolve, 120))
-      }
-    }
+    const abort = new AbortController()
+    const builder = createDocumentStreamBuilder(editor)
 
     async function init() {
-      // Restore saved state from Dexie if it exists
-      const saved = await getSegment0State(activeDocId)
-      if (cancelled) return
-
-      if (saved !== null) {
-        try {
-          const state = saved as Parameters<typeof editor.parseEditorState>[0]
-          editor.setEditorState(editor.parseEditorState(state))
-          return
-        } catch (err) {
-          // Back up the unparseable state instead of deleting it outright —
-          // a document isn't silently destroyed just because (for example)
-          // it references a node type that's since been removed or renamed.
-          // It stays recoverable from localStorage/devtools even though the
-          // editor itself can't open it.
-          try {
-            localStorage.setItem(backupKey, JSON.stringify({
-              savedAt: new Date().toISOString(),
-              error: err instanceof Error ? err.message : String(err),
-              state: saved,
-            }))
-          } catch {
-            // backup best-effort; still proceed to clear the unusable primary state
-          }
-          await deleteSegment0State(activeDocId)
-          if (cancelled) return
+      // Read-only while the document is being built, so typing can't land in
+      // the middle of it (and a half-built document can't be saved).
+      editor.setEditable(false)
+      try {
+        const found = await streamServerDocument(
+          activeDocId,
+          // Events already buffered when an abort lands must not touch the editor.
+          e => { if (!abort.signal.aborted) builder.apply(e) },
+          abort.signal,
+        )
+        if (abort.signal.aborted) return
+        if (!found) {
+          editor.update(() => {
+            $getRoot().clear()
+            $getRoot().append($createParagraphNode())
+          }, { discrete: true })
+        }
+        if (builder.skipped > 0) {
           setRestoreWarning(
-            'This document could not be restored — it may reference a feature that changed. ' +
-            'A backup copy was kept in local storage under "' + backupKey + '" instead of being deleted. ' +
-            (activeDocSeedDemo
-              ? 'Showing the sample document below; your actual content was not overwritten yet.'
-              : 'Starting from a blank document; your actual content was not overwritten yet.'),
+            `${builder.skipped} block${builder.skipped === 1 ? '' : 's'} could not be shown ` +
+            '(a feature changed or was removed). Saving will drop them from the stored copy.',
           )
         }
-      }
-
-      if (cancelled) return
-
-      // Clear any content from a previous cancelled run (handles React StrictMode double-invoke)
-      editor.update(() => {
-        $getRoot().clear()
-      })
-
-      // Only the one document seeded on a completely fresh install streams the
-      // demo content — every other new document (via "New document") starts
-      // genuinely blank.
-      if (!activeDocSeedDemo) {
-        editor.update(() => {
-          $getRoot().append($createParagraphNode())
-        })
+        editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined) // Undo must not undo the load
+        markClean() // opening a document isn't an edit
+      } catch {
+        if (abort.signal.aborted) return
+        // Stay read-only: the editor holds only part of the document, and
+        // saving it would overwrite the full copy on the server.
+        setRestoreWarning('Could not load this whole document from the server. It is read-only so a partial copy cannot be saved. Check that the backend is running, then reload.')
         return
       }
-
-      await streamDocument()
+      editor.setEditable(true)
     }
 
-    init()
-    return () => {
-      cancelled = true
-    }
-  }, [editor, activeDocId, activeDocSeedDemo, setRestoreWarning])
+    void init()
+    return () => abort.abort()
+  }, [editor, activeDocId, setRestoreWarning, markClean])
 
   return null
 }

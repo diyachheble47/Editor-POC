@@ -137,6 +137,11 @@ export class Model3DNode extends DecoratorNode<ReactElement> {
     return { element: el }
   }
 
+  // Block-level: the default (true) makes Lexical wrap this in a paragraph.
+  isInline(): boolean {
+    return false
+  }
+
   createDOM(_config: EditorConfig): HTMLElement {
     const div = document.createElement('div')
     div.className = 'model3d-wrapper'
