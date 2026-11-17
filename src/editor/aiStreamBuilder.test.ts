@@ -10,6 +10,7 @@ import { GeometryNode } from './nodes/geometry/GeometryNode'
 import { MoleculeNode } from './nodes/molecule/MoleculeNode'
 import { CircuitNode } from './nodes/circuit/CircuitNode'
 import { ChartNode } from './nodes/chart/ChartNode'
+import { MathNode } from './nodes/math/MathNode'
 import { FlowchartNode } from './nodes/flowchart/FlowchartNode'
 import { ListItemNode, ListNode } from '@lexical/list'
 import { EquationNode } from './nodes/EquationNode'
@@ -22,7 +23,7 @@ function run(events: AiEvent[], finish = false) {
     nodes: [
       HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, HorizontalRuleNode, EquationNode, CalloutNode,
       TableNode, TableRowNode, TableCellNode, SpreadsheetNode, GraphNode, GeometryNode, MoleculeNode, CircuitNode,
-      ChartNode, FlowchartNode,
+      ChartNode, FlowchartNode, MathNode,
     ],
     onError: e => { throw e },
   })
@@ -134,6 +135,14 @@ describe('createAiStreamBuilder', () => {
     ])
     expect(skipped).toBe(0)
     expect(blocks.map(b => b.type)).toEqual(['chart', 'flowchart'])
+  })
+
+  it('puts a maths formula in a Math block and a reaction in a chemical equation', () => {
+    const { blocks } = run([
+      { t: 'block', block: { type: 'math', latex: 'V = I \\times R' } },
+      { t: 'block', block: { type: 'equation', value: '2H2 + O2 -> 2H2O' } },
+    ])
+    expect(blocks.map(b => b.type)).toEqual(['math', 'equation'])
   })
 
   it('counts a block it cannot build instead of crashing', () => {

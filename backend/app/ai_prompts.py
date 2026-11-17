@@ -9,8 +9,8 @@ The allowed blocks are exactly these:
 {"type":"paragraph","text":"..."}
 {"type":"bullets","items":["...","..."]}
 {"type":"numbered","items":["...","..."]}
-{"type":"equation","chem":"2H2 + O2 -> 2H2O"}         a chemical equation, plain text with ->
-{"type":"equation","latex":"\\\\frac{a}{b} = c"}        a maths/physics formula in LaTeX
+{"type":"equation","chem":"2H2 + O2 -> 2H2O"}         ONLY a chemical reaction, plain text with ->
+{"type":"equation","latex":"\\\\frac{a}{b} = c"}        any maths or physics formula, in LaTeX (never use "chem" for these)
 {"type":"callout","variant":"tip","text":"..."}       variant is info, tip, warning or caution
 {"type":"quote","text":"..."}
 {"type":"divider"}

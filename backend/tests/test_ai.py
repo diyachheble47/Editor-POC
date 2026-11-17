@@ -25,8 +25,8 @@ BODY = {"title": "Acids", "description": "class 10", "kind": "lesson"}
 
 def test_sanitize_accepts_known_blocks_and_fixes_small_problems():
     assert sanitize_block({"type": "heading", "level": 9, "text": " Hi "}) == {"type": "heading", "level": 2, "text": "Hi"}
-    assert sanitize_block({"type": "equation", "latex": "a^2+b^2=c^2"})["value"] == "\\displaystyle a^2+b^2=c^2"
-    assert sanitize_block({"type": "equation", "latex": "\\frac{a}{b}"})["value"] == "\\frac{a}{b}"
+    assert sanitize_block({"type": "equation", "latex": "a^2+b^2=c^2"}) == {"type": "math", "latex": "a^2+b^2=c^2"}
+    assert sanitize_block({"type": "equation", "latex": "\\frac{a}{b}"})["latex"] == "\\frac{a}{b}"
     assert sanitize_block({"type": "equation", "chem": "2H2 + O2 -> 2H2O"})["value"] == "2H2 + O2 -> 2H2O"
     assert sanitize_block({"type": "callout", "variant": "nope", "text": "x"})["variant"] == "info"
     assert sanitize_block({"type": "numbered", "items": ["a", "", 5, "b"]})["items"] == ["a", "b"]

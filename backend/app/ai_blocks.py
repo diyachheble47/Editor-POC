@@ -183,9 +183,7 @@ def sanitize_block(raw: object) -> Optional[dict]:
         if chem:
             return {"type": "equation", "value": chem}  # shown as a chemical equation
         if latex:
-            # The editor treats text starting with a backslash as raw LaTeX
-            # (anything else is read as chemistry), so make sure it does.
-            return {"type": "equation", "value": latex if latex.startswith("\\") else "\\displaystyle " + latex}
+            return {"type": "math", "latex": latex}  # a maths/physics formula, not a chemical equation
         return None
 
     if kind == "callout":

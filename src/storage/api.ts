@@ -169,7 +169,8 @@ export type AiBlock =
   | { type: 'heading'; level: 1 | 2 | 3 }
   | { type: 'paragraph' }
   | { type: 'list'; ordered: boolean; items: string[] }
-  | { type: 'equation'; value: string }
+  | { type: 'equation'; value: string } // chemical equation
+  | { type: 'math'; latex: string } // maths / physics formula (LaTeX)
   | { type: 'callout'; variant: 'info' | 'tip' | 'warning' | 'caution'; text: string }
   | { type: 'quote'; text: string }
   | { type: 'divider' }

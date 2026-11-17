@@ -8,6 +8,7 @@ import { $createCodeNode } from '@lexical/code-core'
 import { $createTableNodeWithDimensions } from '@lexical/table'
 import { $createHorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode'
 import { $createEquationNode } from './nodes/EquationNode'
+import { MathNode } from './nodes/math/MathNode'
 import { $createCalloutNode } from './nodes/callout'
 import { SpreadsheetNode } from './nodes/spreadsheet/SpreadsheetNode'
 import { GraphNode } from './nodes/graph/GraphNode'
@@ -149,6 +150,7 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
         return list
       }
       case 'equation': return $createEquationNode(block.value)
+      case 'math': return new MathNode(block.latex, true, 'math')
       case 'callout': return $createCalloutNode(block.variant, block.text)
       case 'quote': return $createQuoteNode().append($createTextNode(block.text))
       case 'divider': return $createHorizontalRuleNode()
