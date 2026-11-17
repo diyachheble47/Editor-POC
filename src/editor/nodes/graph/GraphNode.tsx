@@ -17,10 +17,10 @@ import type {
   SerializedLexicalNode,
   Spread,
 } from 'lexical'
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { compileExpr } from './expr'
-import { RANGE, SIZE, toPx, toData, snap, makePointId, gridLines as sharedGridLines } from '../_shared/plane'
+import { makePointId } from '../_shared/plane'
 import type { PlanePoint } from '../_shared/plane'
 
 export type GraphPoint = PlanePoint
@@ -30,6 +30,9 @@ export type SerializedGraphNode = Spread<
   { points: GraphPoint[]; edges: GraphEdge[]; functions: string[] },
   SerializedLexicalNode
 >
+
+// JSXGraph (axes, plots, draggable points) is fetched only when a document has a graph.
+const GraphBoard = lazy(() => import('./GraphBoard'))
 
 const FN_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6']
 
@@ -48,6 +51,24 @@ function GraphComponent({
   const [mode, setMode] = useState<'point' | 'line'>('point')
   const [selected, setSelected] = useState<string | null>(null)
   const [fnDraft, setFnDraft] = useState('')
+  const [fnError, setFnError] = useState<string | null>(null)
+  // The editing controls (Point/Connect, the Plot input, remove ×) show only
+  // while the user is working on this graph; click outside and just the graph
+  // and its equations remain.
+  const [editing, setEditing] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!editing) return
+    const onDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setEditing(false)
+        setSelected(null)
+      }
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [editing])
 
   function update(fn: (node: GraphNode) => void) {
     editor.update(() => {
@@ -56,21 +77,12 @@ function GraphComponent({
     })
   }
 
-  function handleBackgroundClick(e: React.MouseEvent<SVGSVGElement>) {
+  function handleBackgroundClick(x: number, y: number) {
     if (mode !== 'point') return
-    const svg = e.currentTarget
-    const rect = svg.getBoundingClientRect()
-    const px = ((e.clientX - rect.left) / rect.width) * SIZE
-    const py = ((e.clientY - rect.top) / rect.height) * SIZE
-    const [dx, dy] = toData(px, py)
-    const x = snap(dx)
-    const y = snap(dy)
-    if (Math.abs(x) > RANGE || Math.abs(y) > RANGE) return
     update((node) => node.addPoint({ id: makePointId(), x, y }))
   }
 
-  function handlePointClick(e: React.MouseEvent, id: string) {
-    e.stopPropagation()
+  function handlePointClick(id: string) {
     if (mode === 'point') {
       update((node) => node.removePoint(id))
       return
@@ -93,38 +105,26 @@ function GraphComponent({
       compileExpr(expr) // validate before storing
       update((node) => node.addFunction(expr))
       setFnDraft('')
-    } catch {
-      // Invalid expression — leave the draft so the user can fix it;
-      // the function list below shows the same parse error inline.
+      setFnError(null)
+    } catch (err) {
+      // Invalid expression: keep the draft so it can be fixed, and say why.
+      setFnError(err instanceof Error ? err.message : 'Not a valid expression')
     }
   }
 
-  const gridLines = useMemo(() => sharedGridLines(), [])
-
-  const pointById = useMemo(() => new Map(points.map(p => [p.id, p])), [points])
-
-  const curves = useMemo(() => {
-    return functions.map((expr, i) => {
-      try {
-        const fn = compileExpr(expr)
-        const step = (RANGE * 2) / 200
-        const pts: string[] = []
-        for (let x = -RANGE; x <= RANGE; x += step) {
-          const y = fn(x)
-          if (!Number.isFinite(y)) continue
-          const [px, py] = toPx(x, y)
-          pts.push(`${px},${py}`)
-        }
-        return { expr, color: FN_COLORS[i % FN_COLORS.length], path: pts.join(' '), error: null as string | null }
-      } catch (err) {
-        return { expr, color: FN_COLORS[i % FN_COLORS.length], path: '', error: String(err instanceof Error ? err.message : err) }
-      }
-    })
-  }, [functions])
+  const curves = useMemo(() => functions.map((expr, i) => {
+    const color = FN_COLORS[i % FN_COLORS.length]
+    try {
+      compileExpr(expr)
+      return { expr, color, error: null as string | null }
+    } catch (err) {
+      return { expr, color, error: String(err instanceof Error ? err.message : err) }
+    }
+  }), [functions])
 
   return (
-    <div className="graph-block" contentEditable={false}>
-      <div className="graph-toolbar">
+    <div className="graph-block" contentEditable={false} ref={rootRef} onClick={() => setEditing(true)}>
+      {editing && <div className="graph-toolbar">
         <button
           type="button"
           className={`graph-mode-btn${mode === 'point' ? ' active' : ''}`}
@@ -146,49 +146,22 @@ function GraphComponent({
               ? 'Click another point to connect it.'
               : 'Click a point, then another to connect them.'}
         </span>
-      </div>
+      </div>}
 
-      <svg
-        className="graph-svg"
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
-        onClick={handleBackgroundClick}
-      >
-        {gridLines.map((l, i) => (
-          <line
-            key={i}
-            x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-            className={l.major ? 'graph-axis' : 'graph-gridline'}
-          />
-        ))}
-
-        {edges.map(([a, b], i) => {
-          const pa = pointById.get(a)
-          const pb = pointById.get(b)
-          if (!pa || !pb) return null
-          const [x1, y1] = toPx(pa.x, pa.y)
-          const [x2, y2] = toPx(pb.x, pb.y)
-          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} className="graph-edge" />
-        })}
-
-        {curves.map((c, i) => c.path && (
-          <polyline key={i} points={c.path} className="graph-curve" style={{ stroke: c.color }} />
-        ))}
-
-        {points.map((p) => {
-          const [px, py] = toPx(p.x, p.y)
-          return (
-            <g key={p.id} onClick={(e) => handlePointClick(e, p.id)}>
-              <circle
-                cx={px} cy={py} r={6}
-                className={`graph-point${selected === p.id ? ' selected' : ''}`}
-              />
-              <text x={px + 9} y={py - 7} className="graph-point-label">
-                ({p.x}, {p.y})
-              </text>
-            </g>
-          )
-        })}
-      </svg>
+      <Suspense fallback={<div className="graph-board graph-loading" />}>
+        <GraphBoard
+          points={points}
+          edges={edges}
+          functions={functions}
+          colors={FN_COLORS}
+          editing={editing}
+          selected={selected}
+          onBackgroundClick={handleBackgroundClick}
+          onPointClick={handlePointClick}
+          onPointMoved={(id, x, y) => update((node) => node.movePoint(id, x, y))}
+          onEnterEdit={() => setEditing(true)}
+        />
+      </Suspense>
 
       <div className="graph-functions">
         {curves.map((c, i) => (
@@ -196,20 +169,21 @@ function GraphComponent({
             <span className="graph-fn-swatch" style={{ background: c.color }} />
             <span className="graph-fn-expr">y = {c.expr}</span>
             {c.error && <span className="graph-fn-error" title={c.error}>invalid</span>}
-            <button type="button" className="graph-fn-remove" onClick={() => update((node) => node.removeFunction(i))}>×</button>
+            {editing && <button type="button" className="graph-fn-remove" onClick={() => update((node) => node.removeFunction(i))}>×</button>}
           </div>
         ))}
-        <div className="graph-fn-add">
+        {editing && <div className="graph-fn-add">
           <span className="graph-fn-add-prefix">y =</span>
           <input
             className="graph-fn-input"
             placeholder="x^2 + 1"
             value={fnDraft}
-            onChange={e => setFnDraft(e.target.value)}
+            onChange={e => { setFnDraft(e.target.value); setFnError(null) }}
             onKeyDown={e => { if (e.key === 'Enter') addFunction() }}
           />
           <button type="button" className="graph-fn-add-btn" onClick={addFunction}>Plot</button>
-        </div>
+        </div>}
+        {editing && fnError && <div className="graph-fn-error-msg" role="alert">{fnError}</div>}
       </div>
     </div>
   )
@@ -247,6 +221,11 @@ export class GraphNode extends DecoratorNode<React.ReactElement> {
 
   static importJSON(s: SerializedGraphNode): GraphNode {
     return new GraphNode(s.points, s.edges, s.functions)
+  }
+
+  movePoint(id: string, x: number, y: number): void {
+    const self = this.getWritable()
+    self.__points = self.__points.map(p => (p.id === id ? { ...p, x, y } : p))
   }
 
   addPoint(point: GraphPoint): void {

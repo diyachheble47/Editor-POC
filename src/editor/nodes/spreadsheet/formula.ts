@@ -104,7 +104,8 @@ export function evaluateCell(raw: string, grid: Grid, visiting: Set<string> = ne
     return typeof v === 'number' ? v : Number(v) || 0
   }
 
-  const tokens = tokenize(trimmed.slice(1))
+  // `$` (absolute refs like $A$1) only matters when filling; evaluating ignores it.
+  const tokens = tokenize(trimmed.slice(1).replace(/\$/g, ''))
   let pos = 0
   function peek(): Token | undefined { return tokens[pos] }
   function next(): Token {
@@ -160,11 +161,34 @@ export function evaluateCell(raw: string, grid: Grid, visiting: Set<string> = ne
     return parsePrimary()
   }
 
-  function parseRangeNums(aCol: number, aRow: number, bCol: number, bRow: number): number[] {
+  // One cell's number for an aggregate: empty and text cells are skipped (as in
+  // Excel's SUM/AVERAGE), an error inside the range is passed on. For whole
+  // column/row ranges the formula's own cell is part of the range, so a
+  // circular hit there is skipped instead of failing (`=SUM(A:A)` typed in A10).
+  function rangeCell(col: number, row: number, skipCircular: boolean): number | null {
+    const raw = grid.get(row, col)
+    if (raw.trim() === '') return null
+    const cellKey = `${col},${row}`
+    if (visiting.has(cellKey)) return skipCircular ? null : (() => { throw new FormulaError('#CIRCULAR') })()
+    const nextVisiting = new Set(visiting)
+    nextVisiting.add(cellKey)
+    const v = evaluateCell(raw, grid, nextVisiting)
+    if (typeof v === 'number') return v
+    if (v === '#CIRCULAR' && skipCircular) return null
+    if (v.startsWith('#')) throw new FormulaError(v)
+    return null // text
+  }
+
+  function parseRangeNums(aCol: number, aRow: number, bCol: number, bRow: number, whole = false): number[] {
     const nums: number[] = []
     const c0 = Math.min(aCol, bCol), c1 = Math.max(aCol, bCol)
     const r0 = Math.min(aRow, bRow), r1 = Math.max(aRow, bRow)
-    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) nums.push(cellValue(c, r))
+    for (let r = Math.max(r0, 0); r <= Math.min(r1, grid.rows - 1); r++) {
+      for (let c = Math.max(c0, 0); c <= Math.min(c1, grid.cols - 1); c++) {
+        const n = rangeCell(c, r, whole)
+        if (n !== null) nums.push(n)
+      }
+    }
     return nums
   }
 
@@ -180,7 +204,16 @@ export function evaluateCell(raw: string, grid: Grid, visiting: Set<string> = ne
       for (;;) {
         const a = peek()
         const b = tokens[pos + 1]
-        if (a?.type === 'cell' && b?.type === 'op' && b.value === ':') {
+        const c = tokens[pos + 2]
+        if (a?.type === 'ident' && !AGGREGATES[a.value] && b?.type === 'op' && b.value === ':' && c?.type === 'ident') {
+          // Whole columns: A:A, A:C
+          next(); next(); next()
+          nums.push(...parseRangeNums(colLetterToIndex(a.value), 0, colLetterToIndex(c.value), grid.rows - 1, true))
+        } else if (a?.type === 'num' && b?.type === 'op' && b.value === ':' && c?.type === 'num') {
+          // Whole rows: 1:1, 2:5
+          next(); next(); next()
+          nums.push(...parseRangeNums(0, a.value - 1, grid.cols - 1, c.value - 1, true))
+        } else if (a?.type === 'cell' && b?.type === 'op' && b.value === ':') {
           next(); next()
           const c2 = next()
           if (c2.type !== 'cell') throw new FormulaError('#SYNTAX')
@@ -211,4 +244,27 @@ export function evaluateCell(raw: string, grid: Grid, visiting: Set<string> = ne
     if (err instanceof FormulaError) return err.message
     throw err
   }
+}
+
+/**
+ * Moves the cell references in a formula, like copying it to another cell in a
+ * spreadsheet: `=A1+B1` filled one row down becomes `=A2+B2`. A `$` pins that
+ * part (`$A1` keeps column A, `A$1` keeps row 1). Text that isn't a formula is
+ * returned unchanged. A reference pushed off the sheet becomes `#REF`, which
+ * shows as an error rather than silently pointing somewhere else.
+ */
+export function shiftFormula(raw: string, dRows: number, dCols: number): string {
+  if (!raw.trim().startsWith('=')) return raw
+  return raw.replace(/(?<![A-Za-z0-9_$])(\$?)([A-Za-z]{1,3})(\$?)(\d+)(?![A-Za-z0-9_(])/g,
+    (_m, absCol: string, letters: string, absRow: string, digits: string) => {
+      const col = colLetterToIndex(letters) + (absCol ? 0 : dCols)
+      const row = Number(digits) + (absRow ? 0 : dRows)
+      if (col < 0 || row < 1) return '#REF'
+      return `${absCol}${colIndexToLetter(col)}${absRow}${row}`
+    })
+}
+
+/** Evaluates the cell at (row, col), knowing where it sits so a formula can't count itself. */
+export function evaluateAt(grid: Grid, row: number, col: number): number | string {
+  return evaluateCell(grid.get(row, col), grid, new Set([`${col},${row}`]))
 }

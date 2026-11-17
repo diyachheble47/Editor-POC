@@ -8,13 +8,6 @@ vi.mock('./documentStore', () => ({
   listDocuments: async () => [...states.keys()].map(id => ({ id })),
   loadDocumentState: async (id: string) => states.get(id) ?? null,
 }))
-vi.mock('./api', () => ({
-  listServerAssetIds: async () => [],
-  uploadServerAsset: async () => {},
-  downloadServerAsset: async () => { throw new Error('404') },
-  deleteServerAsset: async () => {},
-}))
-
 import { saveAsset, getAsset, listAssetIds, deleteAsset } from '../editor/assetStore'
 import { findOrphanedAssetIds, deleteOrphanedAssets } from './assetCleanup'
 

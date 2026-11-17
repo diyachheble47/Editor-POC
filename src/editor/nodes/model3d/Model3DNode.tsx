@@ -9,8 +9,10 @@ import type {
   Spread,
 } from 'lexical'
 import type { ReactElement } from 'react'
-import { createElement } from 'react'
-import { Model3DViewer } from './Model3DViewer'
+import { createElement, lazy, Suspense } from 'react'
+
+// three.js is big: the viewer (and three with it) is fetched only when a document has a 3D model.
+const Model3DViewer = lazy(() => import('./Model3DViewer').then(m => ({ default: m.Model3DViewer })))
 
 export type Model3DDisplayMode = 'inline' | 'fullwidth' | 'float-left' | 'float-right'
 
@@ -192,7 +194,7 @@ export class Model3DNode extends DecoratorNode<ReactElement> {
   getCamera(): Model3DCamera | undefined { return this.__camera }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): ReactElement {
-    return createElement(Model3DViewer, {
+    return createElement(Suspense, { fallback: createElement('div', { className: 'model3d-block model3d-loading' }) }, createElement(Model3DViewer, {
       nodeKey: this.getKey(),
       modelId: this.__modelId,
       modelUrl: this.__modelUrl,
@@ -200,7 +202,7 @@ export class Model3DNode extends DecoratorNode<ReactElement> {
       scale: this.__scale,
       animation: this.__animation,
       display: this.__display,
-    })
+    }))
   }
 }
 

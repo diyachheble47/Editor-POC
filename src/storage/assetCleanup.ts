@@ -1,4 +1,4 @@
-// Finds and removes 3D-model files on the server that no saved document
+// Finds and removes 3D-model files in this browser's IndexedDB that no saved document
 // references — e.g. a block that was deleted, or an upload whose document was
 // never saved.
 //

@@ -1,32 +1,29 @@
-# React + TypeScript + Vite
+# Teacher Notebook editor (POC)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A block editor for teachers, built on Lexical, with STEM blocks and AI generation.
 
-Currently, two official plugins are available:
+- **Editor:** React 19, Lexical, Vite. Blocks: text, tables, spreadsheet, matrix, equations (KaTeX), graph (JSXGraph), geometry, chart, flowchart, electric circuit (React Flow), molecule (SmilesDrawer), code, image, 3D model, drawing.
+- **Backend:** FastAPI + SQLite (`backend/`), SSE streaming, Gemini document generation (`/agent` and the top-bar button).
+- **Files:** images and 3D models live in the browser's IndexedDB; the document stores only an `idb-asset:<id>` reference.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run
 
-## React Compiler
+```bash
+npm install
+npm run dev                      # http://localhost:5173
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+cd backend
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env             # add GEMINI_API_KEY
+.venv/bin/uvicorn app.main:app --port 8000 --reload
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Check
+
+```bash
+npx tsc -b && npx vitest run     # types and unit tests
+npx oxlint src                   # lint
+cd backend && .venv/bin/python -m pytest -q
+```
+
+More: `backend/README.md` (API), `STREAMING.md` (how documents stream in).

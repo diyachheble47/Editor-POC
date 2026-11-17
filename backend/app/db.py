@@ -5,7 +5,6 @@ from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("NOTEBOOK_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 DB_PATH = DATA_DIR / "notebook.db"
-ASSET_DIR = DATA_DIR / "assets"
 
 # Single-user stub, same placeholder the frontend's Dexie records use. Real
 # accounts later change how this is obtained, not the tables around it.
@@ -31,19 +30,11 @@ CREATE TABLE IF NOT EXISTS document_segments (
     updated_at  TEXT NOT NULL,
     UNIQUE (document_id, position)
 );
-CREATE TABLE IF NOT EXISTS asset_metadata (
-    asset_id   TEXT PRIMARY KEY,
-    filename   TEXT NOT NULL,
-    mime_type  TEXT NOT NULL,
-    size       INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-);
 """
 
 
 def init_db() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    ASSET_DIR.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
         conn.executescript(SCHEMA)
 

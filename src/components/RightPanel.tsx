@@ -3,8 +3,10 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { $getNodeByKey } from 'lexical'
 import katex from 'katex'
 import 'katex/contrib/mhchem'
-import { BLOCK_REGISTRY, CATEGORY_ORDER, CATEGORY_LABELS } from '../editor/blockRegistry'
+import { useDocument } from '../context/DocumentContext'
+import { AgentPanel } from './AgentPanel'
 import { useEditorUI } from '../editor/context/EditorUIContext'
+import type { AgentSession, ActiveModel3D } from '../editor/context/EditorUIContext'
 import { $isMathNode } from '../editor/nodes/math/MathNode'
 import { $getModel3DNodeByKey } from '../editor/nodes/model3d/Model3DNode'
 import type { Model3DDisplayMode } from '../editor/nodes/model3d/Model3DNode'
@@ -13,71 +15,37 @@ interface RightPanelProps {
   isOpen: boolean
 }
 
+// The right panel only shows the properties of the block being edited (math
+// formula, 3D model). Inserting blocks is done from the slash menu in the
+// editor, not from here.
 export function RightPanel({ isOpen }: RightPanelProps) {
-  const { activeMath, activeModel3d } = useEditorUI()
+  const { activeMath, activeModel3d, agent, update } = useEditorUI()
+  const { activeDocId } = useDocument()
+
+  // The agent works on one document; switching documents closes it.
+  useEffect(() => { update({ agent: null }) }, [activeDocId, update])
+
+  // The /agent slash command announces itself with this event.
+  useEffect(() => {
+    const open = (e: Event) => update({ agent: (e as CustomEvent<AgentSession>).detail, activeMath: null, activeModel3d: null })
+    window.addEventListener('tnb:open-agent', open)
+    return () => window.removeEventListener('tnb:open-agent', open)
+  }, [update])
 
   return (
-    <aside className={`app-sidebar-right${isOpen ? '' : ' closed'}`} aria-label="Tools">
+    <aside className={`app-sidebar-right${isOpen ? '' : ' closed'}${agent ? ' agent-open' : ''}`} aria-label="Tools">
       <div className="rpanel-inner">
         <div className="rpanel-content">
-          {activeMath ? (
+          {agent ? (
+            <AgentPanel key={agent.context.length + String(agent.empty)} session={agent} />
+          ) : activeMath ? (
             <MathEditorPanel />
           ) : activeModel3d ? (
             <Model3DPropertiesPanel />
-          ) : (
-            <InsertPanel />
-          )}
+          ) : null}
         </div>
       </div>
     </aside>
-  )
-}
-
-/* ── INSERT PANEL ───────────────────────────────────────────── */
-// Every insertable block grouped by category (Basic, Layout, Media, STEM) —
-// no separate tabs to dig through.
-
-function InsertPanel() {
-  const [editor] = useLexicalComposerContext()
-
-  return (
-    <div className="insert-panel">
-      {CATEGORY_ORDER.map(cat => {
-        const blocks = BLOCK_REGISTRY.filter(b => b.category === cat)
-        if (blocks.length === 0) return null
-        return (
-          <div key={cat} className="rpanel-block-group">
-            <div className="rpanel-section-header">{CATEGORY_LABELS[cat]}</div>
-            {blocks.map(block =>
-              block.status === 'available' ? (
-                <button
-                  key={block.key}
-                  type="button"
-                  className="rpanel-block-btn"
-                  onClick={() => block.insert(editor)}
-                  title={block.description}
-                >
-                  <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
-                  <span className="rpanel-block-info">
-                    <span className="rpanel-block-label">{block.label}</span>
-                    <span className="rpanel-block-desc">{block.description}</span>
-                  </span>
-                </button>
-              ) : (
-                <div key={block.key} className="rpanel-coming-item">
-                  <span className="rpanel-block-icon" aria-hidden="true">{block.icon}</span>
-                  <span className="rpanel-block-info">
-                    <span className="rpanel-block-label">{block.label}</span>
-                    <span className="rpanel-block-desc">{block.description}</span>
-                  </span>
-                  <span className="badge-soon">Soon</span>
-                </div>
-              )
-            )}
-          </div>
-        )
-      })}
-    </div>
   )
 }
 
@@ -371,8 +339,8 @@ function Model3DPropertiesPanel() {
 
   const { nodeKey, scale, animation, display, fileName } = activeModel3d
 
-  function patch(changes: object) {
-    update({ activeModel3d: { ...activeModel3d, ...changes } })
+  function patch(changes: Partial<ActiveModel3D>) {
+    update({ activeModel3d: { ...activeModel3d, ...changes } as ActiveModel3D })
   }
 
   function applyScale(val: number) {

@@ -21,16 +21,12 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
   const sortedDocs = [...documents].sort((a, b) => {
     if (a.id === activeDocId) return -1
     if (b.id === activeDocId) return 1
-    return (b.lastSaved ?? '').localeCompare(a.lastSaved ?? '')
+    return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')
   })
 
-  function handleDeleteClick(id: string) {
-    if (confirmDeleteId === id) {
-      deleteDocument(id)
-      setConfirmDeleteId(null)
-    } else {
-      setConfirmDeleteId(id)
-    }
+  function confirmDelete(id: string) {
+    deleteDocument(id)
+    setConfirmDeleteId(null)
   }
 
   return (
@@ -83,7 +79,6 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
                   <div
                     key={doc.id}
                     className={`lsb-doc-item${isActive ? ' active' : ''}`}
-                    onMouseLeave={() => { if (isConfirming) setConfirmDeleteId(null) }}
                   >
                     <button
                       type="button"
@@ -99,17 +94,26 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
                         )}
                       </span>
                     </button>
-                    {documents.length > 1 && (
+                    {documents.length > 1 && (isConfirming ? (
+                      <span className="lsb-doc-confirm" role="group" aria-label={`Delete ${doc.title || 'Untitled'}?`}>
+                        <button type="button" className="lsb-doc-confirm-yes" autoFocus onClick={() => confirmDelete(doc.id)}>
+                          Delete
+                        </button>
+                        <button type="button" className="lsb-doc-confirm-no" onClick={() => setConfirmDeleteId(null)}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
                       <button
                         type="button"
-                        className={`lsb-doc-delete-btn${isConfirming ? ' confirming' : ''}`}
-                        onClick={() => handleDeleteClick(doc.id)}
-                        title={isConfirming ? 'Click again to delete' : 'Delete document'}
-                        aria-label={isConfirming ? 'Confirm delete' : 'Delete document'}
+                        className="lsb-doc-delete-btn"
+                        onClick={() => setConfirmDeleteId(doc.id)}
+                        title="Delete document"
+                        aria-label="Delete document"
                       >
-                        {isConfirming ? '✓' : '×'}
+                        ×
                       </button>
-                    )}
+                    ))}
                   </div>
                 )
               })}

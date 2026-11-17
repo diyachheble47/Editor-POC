@@ -36,12 +36,17 @@ export interface ServerSegment {
   revision: number
 }
 
-async function request(path: string, init: RequestInit = {}, timeoutMs = TIMEOUT_MS): Promise<Response> {
+async function request(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = TIMEOUT_MS,
+  okStatuses: number[] = [],
+): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(`${BASE}${path}`, { ...init, signal: controller.signal })
-    if (!res.ok) {
+    if (!res.ok && !okStatuses.includes(res.status)) {
       const detail = await res.json().catch(() => null)
       throw new ApiError(res.status, (detail as { detail?: unknown } | null)?.detail ?? detail)
     }
@@ -86,26 +91,6 @@ export async function saveServerSegment(
   ).json()
 }
 
-export async function listServerAssetIds(): Promise<string[]> {
-  const rows = (await (await request('/assets')).json()) as { assetId: string }[]
-  return rows.map(r => r.assetId)
-}
-
-export async function uploadServerAsset(id: string, blob: Blob): Promise<void> {
-  const form = new FormData()
-  form.append('file', blob, (blob as File).name || id)
-  // Model files are large; give the upload longer than the default.
-  await request(`/assets/${encodeURIComponent(id)}`, { method: 'PUT', body: form }, 120_000)
-}
-
-export async function downloadServerAsset(id: string): Promise<Blob> {
-  return (await request(`/assets/${encodeURIComponent(id)}`, {}, 120_000)).blob()
-}
-
-export async function deleteServerAsset(id: string): Promise<void> {
-  await request(`/assets/${encodeURIComponent(id)}`, { method: 'DELETE' })
-}
-
 // One event of GET /documents/{id}/stream (Server-Sent Events). The SSE
 // `event:` name is the type; `data:` is this same object as JSON.
 export type StreamEvent =
@@ -115,6 +100,33 @@ export type StreamEvent =
   | { t: 'close' }
   | { t: 'block'; node: Record<string, unknown> } // a whole block
   | { t: 'done' }
+
+/**
+ * Reads a Server-Sent Events body, calling onData with each event's JSON
+ * `data`. Parsed by hand over fetch (not EventSource) so it can be aborted
+ * and the browser doesn't auto-reconnect and replay a finished stream.
+ * Return true from onData to stop reading (the stream's last event).
+ */
+async function readSse(res: Response, onData: (data: unknown) => boolean | void, signal?: AbortSignal): Promise<void> {
+  if (!res.body) throw new ApiError(res.status, null)
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (value) buffer += decoder.decode(value, { stream: !done })
+    let end: number
+    while ((end = buffer.indexOf('\n\n')) !== -1) { // events end with a blank line
+      const frame = buffer.slice(0, end)
+      buffer = buffer.slice(end + 2)
+      const data = frame.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart()).join('\n')
+      if (!data) continue
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      if (onData(JSON.parse(data))) { void reader.cancel(); return }
+    }
+    if (done) throw new Error('Stream ended before done')
+  }
+}
 
 /**
  * Streams a saved document, calling onEvent as each event arrives. Resolves
@@ -131,25 +143,82 @@ export async function streamServerDocument(
     signal,
   })
   if (res.status === 404) return false
-  if (!res.ok || !res.body) throw new ApiError(res.status, null)
+  if (!res.ok) throw new ApiError(res.status, null)
+  await readSse(res, data => {
+    const event = data as StreamEvent
+    onEvent(event)
+    return event.t === 'done'
+  }, signal)
+  return true
+}
 
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (value) buffer += decoder.decode(value, { stream: !done })
-    let end: number
-    while ((end = buffer.indexOf('\n\n')) !== -1) { // events end with a blank line
-      const frame = buffer.slice(0, end)
-      buffer = buffer.slice(end + 2)
-      const data = frame.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart()).join('\n')
-      if (!data) continue
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-      const event = JSON.parse(data) as StreamEvent
-      onEvent(event)
-      if (event.t === 'done') return true
-    }
-    if (done) throw new Error('Stream ended before done')
+// ── AI generation ────────────────────────────────────────────────────────────
+
+export type AiKind = 'workbook' | 'lesson_plan' | 'lesson'
+
+export interface AiRequest {
+  title: string
+  description: string
+  /** Text of the existing document, when generating from it. */
+  context?: string
+  kind: AiKind
+}
+
+/** A block the AI produced (already checked and cleaned by the server). */
+export type AiBlock =
+  | { type: 'heading'; level: 1 | 2 | 3 }
+  | { type: 'paragraph' }
+  | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'equation'; value: string }
+  | { type: 'callout'; variant: 'info' | 'tip' | 'warning' | 'caution'; text: string }
+  | { type: 'quote'; text: string }
+  | { type: 'divider' }
+  | { type: 'code'; language: string; text: string }
+  | { type: 'table'; rows: string[][] } // editable spreadsheet grid
+  | { type: 'matrix'; rows: string[][] } // maths matrix
+  | { type: 'graph'; functions: string[]; points: [number, number][]; connect: boolean }
+  | { type: 'geometry'; polygons: [number, number][][]; segments: [number, number][][] }
+  | { type: 'molecule'; name?: string; smiles?: string }
+  | { type: 'flowchart'; nodes: { id: string; kind: 'start' | 'end' | 'process' | 'decision' | 'io'; text: string }[]; edges: [string, string, string?][] }
+  | { type: 'chart'; chartType: 'bar' | 'line' | 'pie'; title: string; labels: string[]; series: { name: string; values: number[] }[] }
+  | { type: 'circuit'; parts: { id: string; type: string; value?: string; closed?: boolean }[]; wires: [string, string][] }
+
+export type AiEvent =
+  | { t: 'start' }
+  | { t: 'open'; block: AiBlock } // heading/paragraph: text follows in pieces
+  | { t: 'text'; text: string }
+  | { t: 'close' }
+  | { t: 'block'; block: AiBlock } // anything else, whole
+  | { t: 'done'; blocks: number }
+  | { t: 'error'; message: string }
+
+export async function getAiStatus(): Promise<boolean> {
+  try {
+    return ((await (await request('/ai/status')).json()) as { configured: boolean }).configured
+  } catch {
+    return false
   }
+}
+
+/** Calls the backend generator and streams its events. Throws ApiError on 503 etc. */
+export async function streamAiDocument(
+  body: AiRequest,
+  onEvent: (event: AiEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${BASE}/ai/generate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+    body: JSON.stringify(body),
+    signal,
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    throw new ApiError(res.status, (detail as { detail?: unknown } | null)?.detail ?? detail)
+  }
+  await readSse(res, data => {
+    const event = data as AiEvent
+    onEvent(event)
+    return event.t === 'done' || event.t === 'error'
+  }, signal)
 }

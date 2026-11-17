@@ -44,11 +44,37 @@ function $getRealTopLevelAncestor(node: import('lexical').LexicalNode): ElementN
   return null
 }
 
+// Turning a line into a heading/list/code/quote converts the whole block. If
+// the line already had other text when the slash command was used ("True or
+// False: ..." then "/code"), that text must stay as it is and the new block
+// should start empty below it — not swallow the sentence.
+function $ensureEmptyTargetBlock(): void {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection)) return
+  const block = $getRealTopLevelAncestor(selection.anchor.getNode())
+  if (block && block.getTextContent() !== '') {
+    const paragraph = $createParagraphNode()
+    block.insertAfter(paragraph)
+    paragraph.selectStart()
+  }
+}
+
+// Runs a block-converting command on an empty target block. Done inside one
+// update so the command sees the new block (commands run immediately, while a
+// separate editor.update would be queued until after it).
+function insertWithCommand(editor: LexicalEditor, run: () => void) {
+  editor.update(() => {
+    $ensureEmptyTargetBlock()
+    run()
+  })
+}
+
 function insertWithBlocksType(
   editor: LexicalEditor,
   createNode: () => ElementNode,
 ) {
   editor.update(() => {
+    $ensureEmptyTargetBlock()
     const selection = $getSelection()
     if ($isRangeSelection(selection)) {
       $setBlocksType(selection, createNode)
@@ -169,7 +195,7 @@ export const BLOCK_REGISTRY: BlockDef[] = [
     category: 'basic',
     status: 'available',
     keywords: ['bullet', 'list', 'unordered'],
-    insert: (editor) => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined),
+    insert: (editor) => insertWithCommand(editor, () => editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)),
     inSlash: true,
     inSidebar: true,
   },
@@ -181,7 +207,7 @@ export const BLOCK_REGISTRY: BlockDef[] = [
     category: 'basic',
     status: 'available',
     keywords: ['numbered', 'ordered', 'list'],
-    insert: (editor) => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined),
+    insert: (editor) => insertWithCommand(editor, () => editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)),
     inSlash: true,
     inSidebar: true,
   },
@@ -235,18 +261,6 @@ export const BLOCK_REGISTRY: BlockDef[] = [
   },
 
   // ── MEDIA ────────────────────────────────────────────────────
-  {
-    key: 'image',
-    label: 'Image',
-    icon: '🖼',
-    description: 'JPEG, PNG, WebP, SVG.',
-    category: 'media',
-    status: 'coming-soon',
-    keywords: ['image', 'photo', 'picture'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
   {
     key: 'video',
     label: 'Video',
@@ -386,3 +400,24 @@ export function registerTool(def: ToolDef): void {
 export function getTools(): readonly ToolDef[] {
   return TOOL_REGISTRY
 }
+
+// "/agent": opens the AI agent panel. The document's text (without the typed
+// "/agent") travels with the event so the panel can use it as context. Runs
+// inside the typeahead's editor update, so it reads with $getRoot directly.
+BLOCK_REGISTRY.unshift({
+  key: 'agent',
+  label: 'AI Agent',
+  icon: '✨',
+  description: 'Generate a lesson, lesson plan or workbook with AI',
+  category: 'basic',
+  status: 'available',
+  keywords: ['agent', 'ai', 'generate', 'lesson', 'workbook', 'plan', 'gemini'],
+  inSlash: true,
+  inSidebar: false,
+  insert: () => {
+    const root = $getRoot()
+    const empty = root.getChildren().every(c => $isParagraphNode(c) && c.getTextContent().trim() === '')
+    const context = empty ? '' : root.getTextContent().replace(/\n{2,}/g, '\n').slice(0, 30000)
+    window.dispatchEvent(new CustomEvent('tnb:open-agent', { detail: { empty, context } }))
+  },
+})

@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import {
   LexicalTypeaheadMenuPlugin,
   MenuOption,
-  useBasicTypeaheadTriggerMatch,
 } from '@lexical/react/LexicalTypeaheadMenuPlugin'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
@@ -22,6 +21,42 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 200
 
+// "/" starts a command at the start of a line or after a space/"(" and may
+// contain spaces (so "/heading 1" works). It can't start with a space or
+// contain another "/" — so ordinary text like "1/2" or "/usr/bin" doesn't trigger.
+const SLASH_TRIGGER = /(^|\s|\()(\/([^\s/][^/\n]{0,40})?)$/
+const triggerFn = (text: string) => {
+  const m = SLASH_TRIGGER.exec(text)
+  if (!m) return null
+  return { leadOffset: m.index + m[1].length, matchingString: m[3] ?? '', replaceableString: m[2] }
+}
+
+// How well a block matches what was typed (lower is better, null = no match):
+// exact label, label starts with it, a word of the label starts with it,
+// label contains it, then keywords. Without this the first match in registry
+// order wins — e.g. "/geometry" used to pick Graph, whose keywords mention it.
+function relevance(block: BlockDef, q: string): number | null {
+  const label = block.label.toLowerCase()
+  if (label === q) return 0
+  if (label.startsWith(q)) return 1
+  if (label.split(/\s+/).some(w => w.startsWith(q))) return 2
+  if (label.includes(q)) return 3
+  const keywords = block.keywords ?? []
+  if (keywords.some(k => k.startsWith(q))) return 4
+  if (keywords.some(k => k.includes(q))) return 5
+  return null
+}
+
+function searchBlocks(blocks: BlockDef[], query: string): BlockDef[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return blocks
+  return blocks
+    .map((block, index) => ({ block, index, score: relevance(block, q) }))
+    .filter((r): r is { block: BlockDef; index: number; score: number } => r.score !== null)
+    .sort((a, b) => a.score - b.score || a.index - b.index)
+    .map(r => r.block)
+}
+
 class SlashOption extends MenuOption {
   block: BlockDef
   constructor(block: BlockDef) {
@@ -36,12 +71,17 @@ export function SlashCommandPlugin() {
   const queryStringRef = useRef<string | null>(null)
 
   useEffect(() => { queryStringRef.current = queryString }, [queryString])
+  // Is the menu actually showing something? (The trigger can stay matched while
+  // nothing matches the query; Escape must then leave the typed text alone.)
+  const menuVisibleRef = useRef(false)
 
   // The list filters on a debounced copy of the query, so it waits for a pause
   // in typing instead of re-filtering on every keystroke. queryString itself
   // stays exact (the Escape handler needs its real length). An empty query
   // (just "/") applies immediately so the full menu opens without a delay.
   const [searchQuery, setSearchQuery] = useState<string | null>(null)
+  const searchQueryRef = useRef<string | null>(null)
+  useEffect(() => { searchQueryRef.current = searchQuery }, [searchQuery])
   useEffect(() => {
     if (!queryString) {
       setSearchQuery(queryString)
@@ -57,7 +97,7 @@ export function SlashCommandPlugin() {
       KEY_ESCAPE_COMMAND,
       () => {
         const q = queryStringRef.current
-        if (q === null) return false
+        if (q === null || !menuVisibleRef.current) return false
         editor.update(() => {
           const sel = $getSelection()
           if (!$isRangeSelection(sel) || !sel.isCollapsed()) return
@@ -72,46 +112,48 @@ export function SlashCommandPlugin() {
     )
   }, [editor])
 
-  const checkForTriggerMatch = useBasicTypeaheadTriggerMatch('/', { minLength: 0 })
-
-  // Only available blocks go into options — these drive keyboard navigation.
-  // Must be ordered the same way the menu is rendered below (grouped by
-  // CATEGORY_ORDER, not raw registry order) — otherwise `options[myIdx]` in
-  // onClick points at the wrong block entirely. Custom blocks (e.g. Columns)
-  // get pushed onto the end of BLOCK_REGISTRY when they self-register, which
-  // doesn't match their displayed category position, so this can't just
-  // filter the registry in place.
-  const options = useMemo(() => {
-    const available = CATEGORY_ORDER.flatMap(cat =>
-      BLOCK_REGISTRY.filter(b => b.category === cat && b.inSlash && b.status === 'available'),
-    )
-    const filtered = searchQuery
-      ? available.filter(b =>
-          b.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          b.keywords?.some(k => k.includes(searchQuery.toLowerCase()))
-        )
-      : available
-    return filtered.map(b => new SlashOption(b))
-  }, [searchQuery])
-
-  // All blocks matching query — used for rendering (includes coming-soon)
+  // Blocks in menu order. With nothing typed: grouped by category, as rendered
+  // below. With a query: one flat list ranked by relevance. `options` (the
+  // selectable blocks, which drive keyboard navigation) and the rendered list
+  // must have the same order — otherwise `options[myIdx]` in onClick points at
+  // the wrong block. Custom blocks (e.g. Columns) self-register at the end of
+  // BLOCK_REGISTRY, which doesn't match their category position, so the grouped
+  // order can't just filter the registry in place.
   const allMatchingBlocks = useMemo(() => {
-    const all = BLOCK_REGISTRY.filter(b => b.inSlash)
-    return searchQuery
-      ? all.filter(b =>
-          b.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          b.keywords?.some(k => k.includes(searchQuery.toLowerCase()))
-        )
-      : all
+    const q = searchQuery?.trim() ?? ''
+    if (q) return searchBlocks(BLOCK_REGISTRY.filter(b => b.inSlash), q)
+    return CATEGORY_ORDER.flatMap(cat => BLOCK_REGISTRY.filter(b => b.category === cat && b.inSlash))
   }, [searchQuery])
+
+  const options = useMemo(
+    () => allMatchingBlocks.filter(b => b.status === 'available').map(b => new SlashOption(b)),
+    [allMatchingBlocks],
+  )
 
   const onSelectOption = useCallback(
     (
       selectedOption: SlashOption,
       _nodeToRemove: import('lexical').TextNode | null,
       closeMenu: () => void,
+      matchingString: string,
     ) => {
-      editor.update(() => {
+      // The list is filtered on a debounced copy of the query. If Enter lands
+      // before that catches up, the highlighted item belongs to an older query
+      // (usually the full list's first item). Resolve what was actually typed.
+      let block = selectedOption.block
+      const typed = matchingString.trim().toLowerCase()
+      if (typed !== (searchQueryRef.current ?? '').trim().toLowerCase()) {
+        const fresh = searchBlocks(BLOCK_REGISTRY.filter(b => b.inSlash && b.status === 'available'), typed)
+        if (typed && fresh.length === 0) { closeMenu(); return }
+        block = fresh[0] ?? block
+      }
+
+      // This callback already runs inside the typeahead's own editor.update, so
+      // the "/query" is removed right here. Wrapping it in another editor.update
+      // would only queue it until after this one finishes — and blocks that
+      // insert through a command (e.g. Divider) run immediately, so they used to
+      // insert first and leave the "/query" text behind.
+      {
         // Remove the whole "/query" typed at the cursor. Relying on the
         // typeahead's nodeToRemove left fragments behind (e.g. a stray "/h"
         // before a heading) when the query contained a space.
@@ -137,8 +179,8 @@ export function SlashCommandPlugin() {
           }
         }
         closeMenu()
-      })
-      selectedOption.block.insert(editor)
+      }
+      block.insert(editor)
     },
     [editor],
   )
@@ -147,20 +189,24 @@ export function SlashCommandPlugin() {
     <LexicalTypeaheadMenuPlugin<SlashOption>
       onQueryChange={setQueryString}
       onSelectOption={onSelectOption}
-      triggerFn={checkForTriggerMatch}
+      triggerFn={triggerFn}
       options={options}
       menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) => {
         if (!anchorElementRef.current) return null
-        if (allMatchingBlocks.length === 0) return null
+        if (allMatchingBlocks.length === 0) { menuVisibleRef.current = false; return null }
 
-        // Build category groups from all matching blocks
-        const groups = CATEGORY_ORDER
-          .map(cat => ({
-            cat,
-            label: CATEGORY_LABELS[cat],
-            blocks: allMatchingBlocks.filter(b => b.category === cat),
-          }))
-          .filter(g => g.blocks.length > 0)
+        menuVisibleRef.current = true
+
+        // Category groups when nothing is typed; one flat ranked list otherwise.
+        const groups = searchQuery?.trim()
+          ? [{ cat: 'results', label: 'Results', blocks: allMatchingBlocks }]
+          : CATEGORY_ORDER
+              .map(cat => ({
+                cat,
+                label: CATEGORY_LABELS[cat],
+                blocks: allMatchingBlocks.filter(b => b.category === cat),
+              }))
+              .filter(g => g.blocks.length > 0)
 
         if (groups.length === 0) return null
 

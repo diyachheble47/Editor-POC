@@ -33,16 +33,13 @@ describe('documentStore', () => {
     expect((await bootstrap()).activeId).toBe('b')
   })
 
-  it('seeds one sample lesson, stored as a normal saved document, on an empty server', async () => {
+  it('starts an empty server with one blank document (nothing saved yet)', async () => {
     m.listServerDocuments.mockResolvedValue([])
     m.createServerDocument.mockImplementation(async (id, title) => ({ ...serverDoc(id, 0), title }))
-    m.saveServerSegment.mockImplementation(async (id, body) => ({ ...serverDoc(id, 1), title: body.title }))
     const { documents } = await bootstrap()
     expect(documents).toHaveLength(1)
-    expect(documents[0].title).toBe('Introduction to Chemistry')
-    const saved = m.saveServerSegment.mock.calls[0][1].state as { root: { children: unknown[] } }
-    expect(saved.root.children.length).toBeGreaterThan(3)
-    expect(documents[0].lastSaved).not.toBeNull()
+    expect(documents[0].title).toBe('Untitled')
+    expect(m.saveServerSegment).not.toHaveBeenCalled()
   })
 
   it('fails loudly when the server is unreachable (no local fallback)', async () => {

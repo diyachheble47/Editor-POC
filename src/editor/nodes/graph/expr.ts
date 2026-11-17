@@ -8,10 +8,30 @@ const FUNCS: Record<string, (n: number) => number> = {
   sin: Math.sin,
   cos: Math.cos,
   tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
   sqrt: Math.sqrt,
   abs: Math.abs,
-  log: Math.log,
+  ln: Math.log, // natural logarithm
+  log: Math.log10, // as in school maths: log(100) = 2
   exp: Math.exp,
+  floor: Math.floor,
+  ceil: Math.ceil,
+}
+
+const CONSTANTS: Record<string, number> = { pi: Math.PI, e: Math.E }
+
+// Teachers type "y = x²", "f(x) = 2×x", "π" — turn that into plain ASCII.
+function normalize(src: string): string {
+  return src
+    .replace(/²/g, '^2')
+    .replace(/³/g, '^3')
+    .replace(/×|·/g, '*')
+    .replace(/÷/g, '/')
+    .replace(/[−–]/g, '-')
+    .replace(/π/g, 'pi')
+    .replace(/^\s*(y|f\s*\(\s*x\s*\))\s*=\s*/i, '')
 }
 
 type Token =
@@ -53,7 +73,7 @@ function tokenize(src: string): Token[] {
 
 /** Compiles a math expression in `x` into a function. Throws on invalid syntax. */
 export function compileExpr(src: string): (x: number) => number {
-  const tokens = tokenize(src)
+  const tokens = tokenize(normalize(src))
   let pos = 0
 
   function peek(): Token | undefined { return tokens[pos] }
@@ -78,31 +98,31 @@ export function compileExpr(src: string): (x: number) => number {
     return left
   }
 
+  // True when the next token can start an operand — "2x", "x(x+1)", "2sin(x)".
+  function startsOperand(): boolean {
+    const t = peek()
+    return t?.type === 'num' || t?.type === 'ident' || (t?.type === 'op' && t.value === '(')
+  }
+
   function parseTerm(): (x: number) => number {
-    let left = parsePower()
+    let left = parseUnary()
     for (;;) {
       const t = peek()
       if (t?.type === 'op' && (t.value === '*' || t.value === '/')) {
         next()
-        const right = parsePower()
+        const right = parseUnary()
         const l = left
         left = t.value === '*' ? (x) => l(x) * right(x) : (x) => l(x) / right(x)
+      } else if (startsOperand()) {
+        const right = parsePower() // implicit multiplication
+        const l = left
+        left = (x) => l(x) * right(x)
       } else break
     }
     return left
   }
 
-  function parsePower(): (x: number) => number {
-    const base = parseUnary()
-    const t = peek()
-    if (t?.type === 'op' && t.value === '^') {
-      next()
-      const exp = parsePower() // right-associative
-      return (x) => Math.pow(base(x), exp(x))
-    }
-    return base
-  }
-
+  // A leading minus applies to the whole power: -x^2 is -(x^2), not (-x)^2.
   function parseUnary(): (x: number) => number {
     const t = peek()
     if (t?.type === 'op' && t.value === '-') {
@@ -110,7 +130,22 @@ export function compileExpr(src: string): (x: number) => number {
       const inner = parseUnary()
       return (x) => -inner(x)
     }
-    return parsePrimary()
+    if (t?.type === 'op' && t.value === '+') {
+      next()
+      return parseUnary()
+    }
+    return parsePower()
+  }
+
+  function parsePower(): (x: number) => number {
+    const base = parsePrimary()
+    const t = peek()
+    if (t?.type === 'op' && t.value === '^') {
+      next()
+      const exp = parseUnary() // right-associative, and allows 2^-1
+      return (x) => Math.pow(base(x), exp(x))
+    }
+    return base
   }
 
   function parsePrimary(): (x: number) => number {
@@ -120,8 +155,13 @@ export function compileExpr(src: string): (x: number) => number {
       return () => v
     }
     if (t.type === 'ident') {
-      if (t.value === 'x') return (x) => x
-      const fn = FUNCS[t.value]
+      const name = t.value.toLowerCase()
+      if (name === 'x') return (x) => x
+      if (Object.hasOwn(CONSTANTS, name)) {
+        const v = CONSTANTS[name]
+        return () => v
+      }
+      const fn = Object.hasOwn(FUNCS, name) ? FUNCS[name] : undefined
       if (!fn) throw new Error(`Unknown function "${t.value}"`)
       const open = next()
       if (open.type !== 'op' || open.value !== '(') throw new Error(`Expected "(" after ${t.value}`)

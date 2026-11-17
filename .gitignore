@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Local tool state
+.claude/settings.local.json
+.trail/cache/

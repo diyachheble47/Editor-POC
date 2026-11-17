@@ -267,6 +267,11 @@ export function BlockControlsPlugin() {
         setDropLine(null)
 
         if (!target) return
+        // Moving a block must not scroll the page: Lexical would otherwise
+        // scroll the old caret position back into view, which looked like the
+        // whole screen jumping. Keep the scroll position exactly as it was.
+        const scroller = root?.closest('.editor-area-scroll') as HTMLElement | null
+        const top = scroller?.scrollTop ?? 0
         editor.update(() => {
           const draggedNode = $getNodeByKey(draggedKey)
           const targetNode = $getNodeByKey(target.key)
@@ -276,7 +281,7 @@ export function BlockControlsPlugin() {
           } else {
             targetNode.insertAfter(draggedNode)
           }
-        })
+        }, { tag: 'skip-scroll-into-view', onUpdate: () => { if (scroller) scroller.scrollTop = top } })
       }
 
       root.addEventListener('pointermove', onPointerMove)

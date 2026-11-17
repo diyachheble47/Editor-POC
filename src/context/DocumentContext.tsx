@@ -9,6 +9,7 @@ import {
 } from '../storage/documentStore'
 import type { DocumentRecord } from '../storage/documentStore'
 import { ApiError } from '../storage/api'
+import type { AiRequest } from '../storage/api'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,12 @@ export interface OutlineItem {
 }
 
 export type DocEntry = DocumentRecord
+
+export interface AiState {
+  status: 'idle' | 'generating' | 'error'
+  message: string | null
+  startedAt?: number // when generation began (ms), to show elapsed time
+}
 
 /** What the editor hands over when the user saves. */
 export interface DocumentSnapshot {
@@ -65,6 +72,21 @@ interface DocumentContextValue {
   createDocument: () => void
   switchDocument: (id: string) => void
   deleteDocument: (id: string) => void
+  // AI: creates a new document and generates its content into it.
+  startAiDocument: (request: AiRequest) => void
+  // For the editor of a document that was just created for AI generation.
+  takeAiJob: (docId: string) => AiRequest | null
+  // Whether the server has any saved content for this document (a brand-new
+  // one has none, so there is nothing to stream).
+  isDocSaved: (docId: string) => boolean
+  aiState: AiState
+  setAiState: (state: AiState) => void
+  // The running generation registers its abort here; stopAi() uses it.
+  aiAbortRef: { current: (() => void) | null }
+  stopAi: () => void
+  // True while the open document is still being streamed in from the server.
+  docLoading: boolean
+  setDocLoading: (loading: boolean) => void
 }
 
 const DocumentContext = createContext<DocumentContextValue>({
@@ -91,6 +113,15 @@ const DocumentContext = createContext<DocumentContextValue>({
   createDocument: () => {},
   switchDocument: () => {},
   deleteDocument: () => {},
+  startAiDocument: () => {},
+  takeAiJob: () => null,
+  isDocSaved: () => false,
+  aiState: { status: 'idle', message: null },
+  setAiState: () => {},
+  aiAbortRef: { current: null },
+  stopAi: () => {},
+  docLoading: false,
+  setDocLoading: () => {},
 })
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -123,6 +154,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const snapshotRef = useRef<(() => DocumentSnapshot | null) | null>(null)
   // Bumped on every edit, so a save that finishes after the user kept typing
   // doesn't mark those newer edits as saved.
+  const [aiState, setAiState] = useState<AiState>({ status: 'idle', message: null })
+  const [docLoading, setDocLoading] = useState(false)
+  const aiJobRef = useRef<{ docId: string; request: AiRequest } | null>(null)
+  const aiAbortRef = useRef<(() => void) | null>(null)
   const editVersionRef = useRef(0)
   const savingRef = useRef(false)
 
@@ -184,7 +219,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     if (!entry) return
 
     const snap = snapshot()
-    if (!snap) return // document still loading: nothing safe to save yet
+    if (!snap) {
+      // The editor is read-only while a document loads or AI is writing into it;
+      // saving now would store half a document.
+      setSaveError('Wait until the document has finished loading or generating, then save.')
+      return
+    }
     const { state, wordCount: wc } = snap
 
     savingRef.current = true
@@ -206,10 +246,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(err => {
+        const status = err instanceof ApiError ? err.status : null
         setSaveError(
-          err instanceof ApiError && err.status === 409
+          status === 409
             ? 'This document was changed somewhere else. Reload the page to get the latest copy before saving.'
-            : 'Could not reach the server — your changes are not saved. Try again.',
+            : status === 404
+              ? 'This document no longer exists on the server (it may have been deleted). Copy your text into a new document.'
+              : status !== null
+                ? `The server could not save this document (error ${status}). Try again.`
+                : 'Could not reach the server — your changes are not saved. Try again.',
         )
         setSaveStatus('error')
       })
@@ -274,6 +319,33 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const startAiDocument = useCallback((request: AiRequest) => {
+    if (!confirmDiscard()) return
+    createDocumentOnServer(request.title.trim() || 'Untitled')
+      .then(entry => {
+        setDocuments(prev => [entry, ...prev])
+        aiJobRef.current = { docId: entry.id, request }
+        setAiState({ status: 'idle', message: null })
+        activateEntry(entry)
+      })
+      .catch(() => setSaveError('Could not reach the server — the new document was not created.'))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const takeAiJob = useCallback((docId: string): AiRequest | null => {
+    const job = aiJobRef.current
+    if (!job || job.docId !== docId) return null
+    aiJobRef.current = null
+    return job.request
+  }, [])
+
+  const isDocSaved = useCallback(
+    (docId: string) => (documentsRef.current.find(d => d.id === docId)?.revision ?? 0) > 0,
+    [],
+  )
+
+  const stopAi = useCallback(() => { aiAbortRef.current?.() }, [])
+
   const switchDocument = useCallback((id: string) => {
     const target = documentsRef.current.find(d => d.id === id)
     if (!target || target.id === activeDocIdRef.current) return
@@ -329,6 +401,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         createDocument,
         switchDocument,
         deleteDocument,
+        startAiDocument,
+        takeAiJob,
+        isDocSaved,
+        aiState,
+        setAiState,
+        aiAbortRef,
+        stopAi,
+        docLoading,
+        setDocLoading,
       }}
     >
       {children}

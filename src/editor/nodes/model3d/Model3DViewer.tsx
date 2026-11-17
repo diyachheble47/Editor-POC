@@ -235,7 +235,7 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
       async function resolveLoadUrl(): Promise<string> {
         if (!isAssetUrl(modelUrl)) return modelUrl
         const blob = await getAsset(assetIdFromUrl(modelUrl))
-        if (!blob) throw new Error('Model file not found — it may have been cleared from this browser.')
+        if (!blob) throw new Error('Model file not found in this browser. Upload the model again.')
         const url = URL.createObjectURL(blob)
         objectUrlToRevoke = url
         return url
@@ -456,12 +456,9 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
 
   function loadFile(file: File) {
     setIsReadingFile(true)
-    // Stored in IndexedDB keyed by the node's own stable modelId, not as a
-    // base64 data: URI inside the Lexical document JSON — a multi-MB model
-    // re-serialized into that JSON on every autosave tick is what used to
-    // risk blowing the localStorage quota (silently, per-origin ~5-10MB).
-    // Using modelId as the key also means replacing a model on the same
-    // block naturally overwrites its old blob instead of leaking it.
+    // Stored in IndexedDB keyed by the node's own stable modelId; the document
+    // JSON keeps only the reference. Using modelId as the key means replacing a
+    // model on the same block overwrites its old file instead of leaking it.
     saveAsset(modelId, file)
       .then(() => {
         setIsReadingFile(false)
@@ -475,12 +472,6 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
         setErrorMsg(err instanceof Error ? err.message : 'Could not save model')
         setLoadState('error')
       })
-  }
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    loadFile(file)
   }
 
   function openProperties() {

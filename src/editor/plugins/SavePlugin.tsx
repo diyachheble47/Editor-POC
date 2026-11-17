@@ -35,7 +35,8 @@ export function SavePlugin() {
       return { state: editorState.toJSON(), wordCount }
     })
 
-    const unregister = editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => {
+    const unregister = editor.registerUpdateListener(({ dirtyElements, dirtyLeaves, tags }) => {
+      if (tags.has('tnb-trailing')) return // housekeeping paragraph, not an edit
       if (!editor.isEditable()) return // content arriving from the server, not an edit
       if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return
       markDirty()

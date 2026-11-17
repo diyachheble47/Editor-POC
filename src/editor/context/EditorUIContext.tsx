@@ -40,7 +40,14 @@ export type BlockType =
   | 'number'
   | 'other'
 
+/** The /agent panel: opened on an empty document, or on one that has content. */
+export interface AgentSession {
+  empty: boolean
+  context: string
+}
+
 interface EditorUIState {
+  agent: AgentSession | null
   editor: LexicalEditor | null
   activeMath: ActiveMath | null
   activeModel3d: ActiveModel3D | null
@@ -51,6 +58,7 @@ interface EditorUIContextValue extends EditorUIState {
 }
 
 const DEFAULTS: EditorUIState = {
+  agent: null,
   editor: null,
   activeMath: null,
   activeModel3d: null,

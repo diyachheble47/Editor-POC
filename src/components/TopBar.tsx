@@ -1,19 +1,32 @@
+import { useEffect, useState } from 'react'
 import { UNDO_COMMAND, REDO_COMMAND } from 'lexical'
 import { useEditorUI } from '../editor/context/EditorUIContext'
 import { useEditorFormat } from '../editor/context/EditorFormatContext'
 import { useDocument, formatRelativeTime } from '../context/DocumentContext'
+import { AiGenerateDialog } from './AiGenerateDialog'
 
 interface TopBarProps {
   leftOpen: boolean
-  rightOpen: boolean
   onToggleLeft: () => void
-  onToggleRight: () => void
 }
 
-export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: TopBarProps) {
+function useElapsedSeconds(since: number | undefined): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (since === undefined) return
+    setNow(Date.now())
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [since])
+  return since === undefined ? 0 : Math.max(0, Math.floor((now - since) / 1000))
+}
+
+export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
   const { editor } = useEditorUI()
   const { canUndo, canRedo } = useEditorFormat()
-  const { title, saveStatus, saveError, save, lastSaved, wordCount } = useDocument()
+  const { title, saveStatus, saveError, save, lastSaved, wordCount, aiState, stopAi, docLoading } = useDocument()
+  const [aiOpen, setAiOpen] = useState(false)
+  const aiSeconds = useElapsedSeconds(aiState.status === 'generating' ? aiState.startedAt : undefined)
 
   const saveLabel =
     saveStatus === 'saving'  ? 'Saving…' :
@@ -74,9 +87,9 @@ export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: Top
         <button
           type="button"
           className="topbar-share-btn"
-          disabled={saveStatus === 'saving' || saveStatus === 'idle' || saveStatus === 'saved'}
+          disabled={saveStatus === 'saving' || saveStatus === 'idle' || saveStatus === 'saved' || aiState.status === 'generating' || docLoading}
           onClick={save}
-          title="Save (Ctrl+S)"
+          title={aiState.status === 'generating' ? 'Wait for the AI to finish, then save' : 'Save (Ctrl+S)'}
         >
           {saveStatus === 'saving' ? 'Saving…' : 'Save'}
         </button>
@@ -105,23 +118,36 @@ export function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: Top
           <RedoIcon />
         </button>
 
+        {docLoading && aiState.status !== 'generating' && (
+          <span className="topbar-ai-status" role="status">Loading document…</span>
+        )}
+        {aiState.status === 'generating' && (
+          <span className="topbar-ai-status" role="status">
+            Generating… {aiSeconds}s
+            <button type="button" className="topbar-ai-stop" onClick={stopAi}>Stop</button>
+          </span>
+        )}
+        {aiState.status === 'error' && aiState.message && (
+          <span className="topbar-sync-status conflict" role="alert">{aiState.message}</span>
+        )}
+
+        <button
+          type="button"
+          className="topbar-ai-btn"
+          disabled={aiState.status === 'generating'}
+          onClick={() => setAiOpen(true)}
+          title="Create a workbook, lesson plan or lesson with AI"
+        >
+          ✨ AI
+        </button>
+
         <span className="topbar-divider" aria-hidden="true" />
 
         <button type="button" className="topbar-share-btn">
           Share
         </button>
-
-        <button
-          type="button"
-          className={`icon-btn${rightOpen ? ' active' : ''}`}
-          onClick={onToggleRight}
-          title={rightOpen ? 'Close tools panel' : 'Open tools panel'}
-          aria-label={rightOpen ? 'Close tools panel' : 'Open tools panel'}
-          aria-pressed={rightOpen}
-        >
-          <SidebarRightIcon />
-        </button>
       </div>
+      {aiOpen && <AiGenerateDialog onClose={() => setAiOpen(false)} />}
     </header>
   )
 }
@@ -133,15 +159,6 @@ function SidebarLeftIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
       <line x1="6" y1="2.75" x2="6" y2="13.25" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  )
-}
-
-function SidebarRightIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="10" y1="2.75" x2="10" y2="13.25" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   )
 }

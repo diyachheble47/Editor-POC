@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
-    "@google/model-viewer": "^4.3.1",
     "@lexical/code-core": "^0.49.0",
     "@lexical/code-prism": "^0.49.0",
     "@lexical/list": "^0.49.0",
@@ -22,12 +21,13 @@
     "@lexical/selection": "^0.49.0",
     "@lexical/table": "^0.49.0",
     "@lexical/utils": "^0.49.0",
-    "@types/three": "^0.185.4",
     "@xyflow/react": "^12.12.1",
+    "jsxgraph": "^1.14.3",
     "katex": "^0.18.4",
     "lexical": "^0.49.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "smiles-drawer": "^2.4.1",
     "three": "^0.183.2"
   },
   "devDependencies": {
@@ -35,6 +35,7 @@
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^6.0.4",
     "@vitest/coverage-v8": "^4.1.11",
     "fake-indexeddb": "^6.2.8",

@@ -1,10 +1,16 @@
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
-from .routers import assets, documents
+from .routers import ai, documents
+
+# backend/.env holds GEMINI_API_KEY (never committed).
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 @asynccontextmanager
@@ -24,7 +30,7 @@ app.add_middleware(
 )
 
 app.include_router(documents.router)
-app.include_router(assets.router)
+app.include_router(ai.router)
 
 
 @app.get("/health")

@@ -42,10 +42,3 @@ class SegmentOut(BaseModel):
     updatedAt: str
     revision: int
 
-
-class AssetOut(BaseModel):
-    assetId: str
-    filename: str
-    mimeType: str
-    size: int
-    createdAt: str

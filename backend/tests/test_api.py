@@ -9,11 +9,11 @@ from fastapi.testclient import TestClient
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_DATA_DIR", str(tmp_path))
     import app.db as db
-    import app.routers.assets as assets_router
+    import app.routers.ai as ai_router
     import app.routers.documents as documents_router
     import app.main as main
 
-    for module in (db, assets_router, documents_router, main):
+    for module in (db, ai_router, documents_router, main):
         importlib.reload(module)
     with TestClient(main.app) as c:
         yield c
@@ -73,27 +73,6 @@ def test_duplicate_document_id_conflicts(client):
     assert client.post("/documents", json={"id": "same"}).status_code == 409
 
 
-def test_asset_upload_download_delete(client):
-    payload = b"glTF-binary-bytes"
-    meta = client.put(
-        "/assets/abc-123", files={"file": ("model.glb", payload, "model/gltf-binary")}
-    ).json()
-    assert meta["size"] == len(payload) and meta["filename"] == "model.glb"
-
-    got = client.get("/assets/abc-123")
-    assert got.status_code == 200 and got.content == payload
-
-    assert [a["assetId"] for a in client.get("/assets").json()] == ["abc-123"]
-    assert client.delete("/assets/abc-123").status_code == 204
-    assert client.get("/assets/abc-123").status_code == 404
-
-
-def test_asset_id_cannot_escape_the_asset_folder(client):
-    assert client.get("/assets/..%2Fnotebook.db").status_code in (400, 404)
-    bad = client.put("/assets/bad.name", files={"file": ("x.bin", b"x", "application/octet-stream")})
-    assert bad.status_code == 400
-
-
 def test_document_streams_as_events(client):
     doc = client.post("/documents", json={"title": "S"}).json()
     para = {"type": "paragraph", "children": [{"type": "text", "text": "Hello world", "format": 1}]}
@@ -118,3 +97,4 @@ def test_document_streams_as_events(client):
 def test_streaming_a_never_saved_document_is_404(client):
     doc = client.post("/documents", json={"title": "Empty"}).json()
     assert client.get(f"/documents/{doc['id']}/stream").status_code == 404
+

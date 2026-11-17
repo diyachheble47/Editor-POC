@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 
 from ..db import LOCAL_OWNER_ID, get_conn
+from ..sse import sse
 from ..schemas import DocumentCreate, DocumentOut, DocumentPatch, SegmentIn, SegmentOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -146,12 +147,6 @@ def save_segment(
     return to_doc(get_doc_row(conn, doc_id))
 
 
-def _sse(event: dict, event_id: int) -> bytes:
-    # One Server-Sent Event: `id`, `event` (the type), `data` (JSON), blank line.
-    data = json.dumps(event, separators=(",", ":"))
-    return f"id: {event_id}\nevent: {event['t']}\ndata: {data}\n\n".encode()
-
-
 def stream_events(state: dict, chunk: int):
     """Turns a saved editor state into a sequence of small events.
 
@@ -180,9 +175,9 @@ def stream_events(state: dict, chunk: int):
 @router.get("/{doc_id}/stream")
 async def stream_document(
     doc_id: str,
-    chunk: int = Query(3, ge=1, le=200),
-    delay_ms: int = Query(35, ge=0, le=1000),
-    block_delay_ms: int = Query(600, ge=0, le=5000),
+    chunk: int = Query(24, ge=1, le=200),
+    delay_ms: int = Query(6, ge=0, le=1000),
+    block_delay_ms: int = Query(80, ge=0, le=5000),
     conn: sqlite3.Connection = Depends(get_conn),
 ):
     """Streams the saved document as Server-Sent Events (text/event-stream).
@@ -203,7 +198,7 @@ async def stream_document(
         for n, event in enumerate(stream_events(state, chunk), start=1):
             if event["t"] == "start":
                 event["revision"] = revision
-            yield _sse(event, n)
+            yield sse(event, n)
             # Text is paced per piece; a whole block (model, equation,
             # circuit...) gets a longer beat so you can see it land.
             pause = {"text": delay_ms, "open": delay_ms * 4, "block": block_delay_ms}.get(event["t"], 0)

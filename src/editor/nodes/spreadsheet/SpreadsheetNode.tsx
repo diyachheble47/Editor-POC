@@ -19,7 +19,7 @@ import type {
 } from 'lexical'
 import { useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { evaluateCell, colIndexToLetter } from './formula'
+import { evaluateAt, colIndexToLetter, shiftFormula } from './formula'
 import type { Grid } from './formula'
 
 export type SerializedSpreadsheetNode = Spread<
@@ -45,6 +45,13 @@ function makeGrid(cells: string[][]): Grid {
 function SpreadsheetComponent({ nodeKey, cells }: { nodeKey: NodeKey; cells: string[][] }) {
   const [editor] = useLexicalComposerContext()
   const [active, setActive] = useState<{ row: number; col: number } | null>(null)
+  // What the user is typing in the focused cell. The editor applies setCell
+  // asynchronously, so an input driven only by `cells` would be reset to the old
+  // text for a moment after each key and the caret would jump to the end,
+  // scrambling what is typed. The input shows this draft instead.
+  const [draft, setDraft] = useState('')
+  // A whole row or column picked by clicking its header (Delete clears it).
+  const [sel, setSel] = useState<{ kind: 'row' | 'col'; index: number } | null>(null)
 
   const rows = cells.length
   const cols = cells[0]?.length ?? 0
@@ -61,12 +68,27 @@ function SpreadsheetComponent({ nodeKey, cells }: { nodeKey: NodeKey; cells: str
     update((node) => node.setCell(row, col, value))
   }
 
+  // Copies the active cell down (or right) over the rest of its column (row),
+  // moving references as it goes, so a formula is typed once, not in every row.
+  function fill(direction: 'down' | 'right') {
+    if (!active) return
+    const { row, col } = active
+    update((node) => node.fill(row, col, direction))
+  }
+
+  // Delete / Backspace on a selected row or column empties it.
+  function onSelectionKey(e: React.KeyboardEvent) {
+    if (!sel || (e.key !== 'Delete' && e.key !== 'Backspace')) return
+    e.preventDefault()
+    update((n) => n.clearLine(sel.kind, sel.index))
+  }
+
   function displayValue(row: number, col: number): string {
-    if (active?.row === row && active?.col === col) return cells[row][col]
+    if (active?.row === row && active?.col === col) return draft
     const raw = cells[row][col]
     if (!raw.trim().startsWith('=')) return raw
     try {
-      const v = evaluateCell(raw, grid)
+      const v = evaluateAt(grid, row, col)
       return String(v)
     } catch {
       return '#ERROR'
@@ -76,11 +98,29 @@ function SpreadsheetComponent({ nodeKey, cells }: { nodeKey: NodeKey; cells: str
   return (
     <div className="sheet-block" contentEditable={false}>
       <div className="sheet-toolbar">
-        <button type="button" className="sheet-toolbar-btn" onClick={() => update((n) => n.addRow())}>+ Row</button>
-        <button type="button" className="sheet-toolbar-btn" onClick={() => update((n) => n.removeRow())} disabled={rows <= 1}>− Row</button>
-        <button type="button" className="sheet-toolbar-btn" onClick={() => update((n) => n.addColumn())}>+ Col</button>
-        <button type="button" className="sheet-toolbar-btn" onClick={() => update((n) => n.removeColumn())} disabled={cols <= 1}>− Col</button>
-        <span className="sheet-toolbar-hint">Start a cell with "=" for a formula, e.g. =SUM(A1:A3)</span>
+        <button
+          type="button"
+          className="sheet-toolbar-btn"
+          disabled={!active}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => fill('down')}
+          title="Copy the selected cell down its column, adjusting cell references (Ctrl+D)"
+        >
+          Fill ↓
+        </button>
+        <button
+          type="button"
+          className="sheet-toolbar-btn"
+          disabled={!active}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => fill('right')}
+          title="Copy the selected cell across its row, adjusting cell references (Ctrl+R)"
+        >
+          Fill →
+        </button>
+        <span className="sheet-toolbar-hint">
+          Start a cell with "=" for a formula, e.g. =A1+B1, =SUM(A1:A3) or =SUM(B:B). Fill ↓ copies it down the column. Hover a row or column header to add or remove it; click a header to select it.
+        </span>
       </div>
 
       <div className="sheet-scroll">
@@ -89,22 +129,56 @@ function SpreadsheetComponent({ nodeKey, cells }: { nodeKey: NodeKey; cells: str
             <tr>
               <th className="sheet-corner" />
               {Array.from({ length: cols }, (_, c) => (
-                <th key={c} className="sheet-col-header">{colIndexToLetter(c)}</th>
+                <th key={c} className={`sheet-col-header${sel?.kind === 'col' && sel.index === c ? ' selected' : ''}`}>
+                  <button
+                    type="button"
+                    className="sheet-header-btn"
+                    onClick={() => setSel({ kind: 'col', index: c })}
+                    onKeyDown={onSelectionKey}
+                    aria-label={`Select column ${colIndexToLetter(c)}`}
+                  >
+                    {colIndexToLetter(c)}
+                  </button>
+                  <span className="sheet-header-actions">
+                    <button type="button" title="Add a column after this one" aria-label="Add column after" onClick={() => update((n) => n.insertColumn(c + 1))}>+</button>
+                    <button type="button" title="Remove this column" aria-label="Remove column" disabled={cols <= 1} onClick={() => { setSel(null); update((n) => n.removeColumnAt(c)) }}>−</button>
+                  </span>
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {Array.from({ length: rows }, (_, r) => (
               <tr key={r}>
-                <th className="sheet-row-header">{r + 1}</th>
+                <th className={`sheet-row-header${sel?.kind === 'row' && sel.index === r ? ' selected' : ''}`}>
+                  <button
+                    type="button"
+                    className="sheet-header-btn"
+                    onClick={() => setSel({ kind: 'row', index: r })}
+                    onKeyDown={onSelectionKey}
+                    aria-label={`Select row ${r + 1}`}
+                  >
+                    {r + 1}
+                  </button>
+                  <span className="sheet-header-actions sheet-header-actions-row">
+                    <button type="button" title="Add a row below this one" aria-label="Add row below" onClick={() => update((n) => n.insertRow(r + 1))}>+</button>
+                    <button type="button" title="Remove this row" aria-label="Remove row" disabled={rows <= 1} onClick={() => { setSel(null); update((n) => n.removeRowAt(r)) }}>−</button>
+                  </span>
+                </th>
                 {Array.from({ length: cols }, (_, c) => (
-                  <td key={c} className="sheet-cell-td">
+                  <td key={c} className={`sheet-cell-td${(sel?.kind === 'row' && sel.index === r) || (sel?.kind === 'col' && sel.index === c) ? ' selected' : ''}`}>
                     <input
                       className="sheet-cell-input"
                       value={displayValue(r, c)}
-                      onFocus={() => setActive({ row: r, col: c })}
+                      onFocus={() => { setSel(null); setActive({ row: r, col: c }); setDraft(cells[r][c]) }}
                       onBlur={() => setActive(null)}
-                      onChange={(e) => setCell(r, c, e.target.value)}
+                      onChange={(e) => { setDraft(e.target.value); setCell(r, c, e.target.value) }}
+                      onKeyDown={(e) => {
+                        if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'r')) {
+                          e.preventDefault()
+                          fill(e.key === 'd' ? 'down' : 'right')
+                        }
+                      }}
                     />
                   </td>
                 ))}
@@ -145,6 +219,52 @@ export class SpreadsheetNode extends DecoratorNode<React.ReactElement> {
     const self = this.getWritable()
     self.__cells = self.__cells.map((r, ri) =>
       ri === row ? r.map((v, ci) => (ci === col ? value : v)) : r
+    )
+  }
+
+  /** Copies cell (row, col) over the cells after it in its column ('down') or row ('right'). */
+  fill(row: number, col: number, direction: 'down' | 'right'): void {
+    const self = this.getWritable()
+    const source = self.__cells[row]?.[col]
+    if (source === undefined) return
+    self.__cells = self.__cells.map((cells, r) =>
+      cells.map((value, c) => {
+        if (direction === 'down' && c === col && r > row) return shiftFormula(source, r - row, 0)
+        if (direction === 'right' && r === row && c > col) return shiftFormula(source, 0, c - col)
+        return value
+      }),
+    )
+  }
+
+  insertRow(at: number): void {
+    const self = this.getWritable()
+    const cols = self.__cells[0]?.length ?? DEFAULT_COLS
+    const row = Array.from({ length: cols }, () => '')
+    self.__cells = [...self.__cells.slice(0, at), row, ...self.__cells.slice(at)]
+  }
+
+  removeRowAt(at: number): void {
+    const self = this.getWritable()
+    if (self.__cells.length <= 1) return
+    self.__cells = self.__cells.filter((_, r) => r !== at)
+  }
+
+  insertColumn(at: number): void {
+    const self = this.getWritable()
+    self.__cells = self.__cells.map((r) => [...r.slice(0, at), '', ...r.slice(at)])
+  }
+
+  removeColumnAt(at: number): void {
+    const self = this.getWritable()
+    if ((self.__cells[0]?.length ?? 0) <= 1) return
+    self.__cells = self.__cells.map((r) => r.filter((_, c) => c !== at))
+  }
+
+  /** Empties a whole row or column. */
+  clearLine(kind: 'row' | 'col', index: number): void {
+    const self = this.getWritable()
+    self.__cells = self.__cells.map((cells, r) =>
+      cells.map((v, c) => ((kind === 'row' ? r === index : c === index) ? '' : v)),
     )
   }
 

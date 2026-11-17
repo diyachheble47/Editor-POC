@@ -8,22 +8,18 @@ import { useDocument } from '../context/DocumentContext'
 
 export function AppLayout() {
   const [leftOpen, setLeftOpen] = useState(true)
-  const [rightOpen, setRightOpen] = useState(true)
-  const { activeMath, activeModel3d } = useEditorUI()
+  const { activeMath, activeModel3d, agent } = useEditorUI()
   const { restoreWarning, setRestoreWarning } = useDocument()
 
   useEffect(() => {
     if (window.innerWidth < 1100) setLeftOpen(false)
-    if (window.innerWidth < 768) setRightOpen(false)
   }, [])
 
-  // Open the right panel when a math or 3D model block's properties are focused,
-  // so its editor is visible without the user having to open the panel manually.
-  useEffect(() => {
-    if (activeMath || activeModel3d) setRightOpen(true)
-  }, [activeMath, activeModel3d])
+  // The right panel exists only while a math or 3D model block's properties
+  // are being edited; there's nothing to show (or toggle) otherwise.
+  const rightOpen = Boolean(activeMath || activeModel3d || agent)
 
-  const anyOpen = leftOpen || rightOpen
+  const anyOpen = leftOpen
 
   return (
     <div className="app-shell">
@@ -42,9 +38,7 @@ export function AppLayout() {
       )}
       <TopBar
         leftOpen={leftOpen}
-        rightOpen={rightOpen}
         onToggleLeft={() => setLeftOpen(v => !v)}
-        onToggleRight={() => setRightOpen(v => !v)}
       />
       <div className="app-body">
         <LeftSidebar isOpen={leftOpen} />
@@ -52,14 +46,13 @@ export function AppLayout() {
           <EditorArea />
         </main>
         <RightPanel isOpen={rightOpen} />
-        {/* Mobile overlay — closes whichever sidebar is open */}
+        {/* Mobile overlay — closes the navigator */}
         {anyOpen && (
           <div
             className="app-mobile-overlay"
             aria-hidden="true"
             onClick={() => {
-              if (leftOpen) setLeftOpen(false)
-              else if (rightOpen) setRightOpen(false)
+              setLeftOpen(false)
             }}
           />
         )}

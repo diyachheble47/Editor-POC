@@ -11,7 +11,7 @@ import {
   saveServerSegment,
 } from './api'
 import type { ServerDocument } from './api'
-import { MOCK_DOCUMENT_PARAGRAPHS, MOCK_DOCUMENT_TITLE } from '../editor/mockDocument'
+import { deleteAsset } from '../editor/assetStore'
 
 export interface DocumentRecord {
   id: string
@@ -67,33 +67,16 @@ export async function createDocument(title = 'Untitled'): Promise<DocumentRecord
   return toRecord(await createServerDocument(genId(), title))
 }
 
-// The sample lesson a brand-new server starts with. It is stored as a normal
-// saved document, so from then on it is read back (and streamed) like any other.
-function sampleLessonState() {
-  return {
-    root: {
-      type: 'root', version: 1, direction: 'ltr', format: '', indent: 0,
-      children: MOCK_DOCUMENT_PARAGRAPHS.map(text => ({
-        type: 'paragraph', version: 1, direction: 'ltr', format: '', indent: 0, textFormat: 0, textStyle: '',
-        children: [{ type: 'text', version: 1, text, format: 0, detail: 0, mode: 'normal', style: '' }],
-      })),
-    },
-  }
-}
-
 export interface BootstrapResult {
   documents: DocumentRecord[]
   activeId: string
 }
 
-/** Loads the document list; a completely empty server gets one demo document. */
+/** Loads the document list; a completely empty server gets one blank document. */
 export async function bootstrap(): Promise<BootstrapResult> {
   let documents = await listDocuments()
   if (documents.length === 0) {
-    const created = await createDocument(MOCK_DOCUMENT_TITLE)
-    documents = [await saveDocument(created.id, {
-      state: sampleLessonState(), title: created.title, wordCount: 0, baseRevision: created.revision,
-    })]
+    documents = [await createDocument()]
   }
   const pointer = getActiveDocPointer()
   const activeId = pointer && documents.some(d => d.id === pointer) ? pointer : documents[0].id
@@ -113,14 +96,33 @@ export async function saveDocument(
   docId: string,
   input: { state: unknown; title: string; wordCount: number; baseRevision: number },
 ): Promise<DocumentRecord> {
+  // The server also frees model files this save no longer references.
   return toRecord(await saveServerSegment(docId, input))
 }
 
+const ASSET_REF = /idb-asset:([a-zA-Z0-9-]+)/g
+const assetIdsIn = (state: unknown): Set<string> =>
+  new Set([...JSON.stringify(state ?? null).matchAll(ASSET_REF)].map(m => m[1]))
+
+/**
+ * DELETE /documents/{id}. The 3D models the document used live in this
+ * browser's IndexedDB, so the ones no other document references are removed
+ * from there too (the server only ever held their references).
+ */
 export async function deleteDocument(docId: string): Promise<void> {
+  let modelIds = new Set<string>()
+  try { modelIds = assetIdsIn(await loadDocumentState(docId)) } catch { /* nothing to clean */ }
   try {
     await deleteServerDocument(docId)
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) return
     throw err
   }
+  if (modelIds.size === 0) return
+  try {
+    for (const doc of await listDocuments()) {
+      for (const id of assetIdsIn(await loadDocumentState(doc.id))) modelIds.delete(id) // still used elsewhere
+    }
+    await Promise.all([...modelIds].map(id => deleteAsset(id)))
+  } catch { /* cleanup is best effort; the orphan sweep can finish it */ }
 }

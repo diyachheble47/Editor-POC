@@ -16,6 +16,7 @@ export const PART_TYPES = [
   'ammeter',
   'voltmeter',
   'ground',
+  'wire',
 ] as const
 export type PartType = (typeof PART_TYPES)[number]
 
@@ -33,6 +34,7 @@ export const PART_LABELS: Record<PartType, string> = {
   ammeter: 'Ammeter',
   voltmeter: 'Voltmeter',
   ground: 'Ground',
+  wire: 'Wire',
 }
 
 export function defaultValue(type: PartType): string {
@@ -50,6 +52,7 @@ export function defaultValue(type: PartType): string {
     case 'ammeter': return 'A'
     case 'voltmeter': return 'V'
     case 'ground': return ''
+    case 'wire': return ''
   }
 }
 
@@ -80,6 +83,7 @@ export function PartSymbol({ type, closed }: { type: PartType; closed: boolean }
   return (
     <svg width="96" height="48" viewBox="0 0 96 48" className="circuit-symbol" aria-hidden="true">
       <g stroke={STROKE} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {type === 'wire' && <line x1="0" y1="24" x2="96" y2="24" />}
         {type === 'battery' && (
           <>
             <Leads from={42} to={66} />

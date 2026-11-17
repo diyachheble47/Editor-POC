@@ -1,6 +1,6 @@
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
-import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
+import { BlockErrorBoundary } from './BlockErrorBoundary'
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
 import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin'
@@ -17,6 +17,7 @@ import { CodeHighlightPlugin } from './plugins/CodeHighlightPlugin'
 import { EditorStatePlugin } from './plugins/EditorStatePlugin'
 import { FloatingFormatPlugin } from './plugins/FloatingFormatPlugin'
 import { OutlinePlugin } from './plugins/OutlinePlugin'
+import { TrailingParagraphPlugin } from './plugins/TrailingParagraphPlugin'
 import { useDocument } from '../context/DocumentContext'
 
 export function EditorArea() {
@@ -48,11 +49,12 @@ export function EditorArea() {
                 Start writing, or type "/" to insert a block…
               </div>
             }
-            ErrorBoundary={LexicalErrorBoundary}
+            ErrorBoundary={BlockErrorBoundary}
           />
 
           {/* Core plugins */}
           <HistoryPlugin />
+          <TrailingParagraphPlugin />
           <ListPlugin />
           <HorizontalRulePlugin />
           <TablePlugin />

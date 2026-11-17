@@ -16,8 +16,11 @@ import './nodes/matrix'
 import './nodes/graph'
 import './nodes/geometry'
 import './nodes/molecule'
+import './nodes/image'
 import './nodes/spreadsheet'
 import './nodes/circuit'
+import './nodes/chart'
+import './nodes/flowchart'
 
 // Future nodes (uncomment when implemented):
 // import './nodes/chemistry'
