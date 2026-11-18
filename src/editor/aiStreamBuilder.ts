@@ -11,6 +11,12 @@ import { $createEquationNode } from './nodes/EquationNode'
 import { MathNode } from './nodes/math/MathNode'
 import { $createCalloutNode } from './nodes/callout'
 import { SpreadsheetNode } from './nodes/spreadsheet/SpreadsheetNode'
+import { DataTableNode } from './nodes/datatable/DataTableNode'
+import { SectionNode } from './nodes/section/SectionNode'
+import { TocNode } from './nodes/toc/TocNode'
+import { TabsNode } from './nodes/tabs/TabsNode'
+import { QuizNode } from './nodes/quiz/QuizNode'
+import { HtmlNode } from './nodes/html/HtmlNode'
 import { GraphNode } from './nodes/graph/GraphNode'
 import { GeometryNode } from './nodes/geometry/GeometryNode'
 import type { GeoEdge } from './nodes/geometry/GeometryNode'
@@ -155,7 +161,13 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
       case 'quote': return $createQuoteNode().append($createTextNode(block.text))
       case 'divider': return $createHorizontalRuleNode()
       case 'code': return $createCodeNode(block.language).append($createTextNode(block.text))
-      case 'table': return new SpreadsheetNode(block.rows)
+      // A table with formulas needs the spreadsheet; everything else is the clean document table.
+      case 'table': return block.rows.some(r => r.some(c => c.startsWith('='))) ? new SpreadsheetNode(block.rows) : new DataTableNode(block.rows)
+      case 'section': return new SectionNode()
+      case 'toc': return new TocNode()
+      case 'tabs': return new TabsNode(block.items)
+      case 'quiz': return new QuizNode(block.questions)
+      case 'html': return new HtmlNode(block.code, block.title)
       case 'matrix': {
         const table = $createTableNodeWithDimensions(block.rows.length, block.rows[0].length, false)
         block.rows.forEach((row, r) => row.forEach((cell, c) => {
@@ -183,6 +195,7 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
         if (!molecule) throw new Error(`unknown molecule ${block.name}`)
         return new MoleculeNode(molecule.atoms, molecule.bonds)
       }
+      case 'keep': throw new Error('keep blocks are handled by the caller') // edit mode rebuilds the original instead
       case 'circuit': return circuitFrom(block)
       case 'flowchart': {
         const g = buildFlowchart(block.nodes, block.edges)

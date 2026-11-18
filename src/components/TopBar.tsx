@@ -3,7 +3,7 @@ import { UNDO_COMMAND, REDO_COMMAND } from 'lexical'
 import { useEditorUI } from '../editor/context/EditorUIContext'
 import { useEditorFormat } from '../editor/context/EditorFormatContext'
 import { useDocument, formatRelativeTime } from '../context/DocumentContext'
-import { AiGenerateDialog } from './AiGenerateDialog'
+import { useTheme } from '../context/ThemeContext'
 
 interface TopBarProps {
   leftOpen: boolean
@@ -23,9 +23,9 @@ function useElapsedSeconds(since: number | undefined): number {
 
 export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
   const { editor } = useEditorUI()
+  const { theme, toggle: toggleTheme } = useTheme()
   const { canUndo, canRedo } = useEditorFormat()
   const { title, saveStatus, saveError, save, lastSaved, wordCount, aiState, stopAi, docLoading } = useDocument()
-  const [aiOpen, setAiOpen] = useState(false)
   const aiSeconds = useElapsedSeconds(aiState.status === 'generating' ? aiState.startedAt : undefined)
 
   const saveLabel =
@@ -133,12 +133,12 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
 
         <button
           type="button"
-          className="topbar-ai-btn"
-          disabled={aiState.status === 'generating'}
-          onClick={() => setAiOpen(true)}
-          title="Create a workbook, lesson plan or lesson with AI"
+          className="icon-btn"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
         >
-          ✨ AI
+          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
 
         <span className="topbar-divider" aria-hidden="true" />
@@ -147,7 +147,6 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
           Share
         </button>
       </div>
-      {aiOpen && <AiGenerateDialog onClose={() => setAiOpen(false)} />}
     </header>
   )
 }
@@ -177,6 +176,23 @@ function RedoIcon() {
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
       <path d="M11.5 6.5H6a3.5 3.5 0 0 0 0 7h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
       <polyline points="9.5,3.5 12.5,6.5 9.5,9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" />
+      <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
+    </svg>
+  )
+}
+
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z" />
     </svg>
   )
 }

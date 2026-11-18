@@ -6,7 +6,7 @@ import 'katex/contrib/mhchem'
 import { useDocument } from '../context/DocumentContext'
 import { AgentPanel } from './AgentPanel'
 import { useEditorUI } from '../editor/context/EditorUIContext'
-import type { AgentSession, ActiveModel3D } from '../editor/context/EditorUIContext'
+import type { ActiveModel3D } from '../editor/context/EditorUIContext'
 import { $isMathNode } from '../editor/nodes/math/MathNode'
 import { $getModel3DNodeByKey } from '../editor/nodes/model3d/Model3DNode'
 import type { Model3DDisplayMode } from '../editor/nodes/model3d/Model3DNode'
@@ -25,19 +25,12 @@ export function RightPanel({ isOpen }: RightPanelProps) {
   // The agent works on one document; switching documents closes it.
   useEffect(() => { update({ agent: null }) }, [activeDocId, update])
 
-  // The /agent slash command announces itself with this event.
-  useEffect(() => {
-    const open = (e: Event) => update({ agent: (e as CustomEvent<AgentSession>).detail, activeMath: null, activeModel3d: null })
-    window.addEventListener('tnb:open-agent', open)
-    return () => window.removeEventListener('tnb:open-agent', open)
-  }, [update])
-
   return (
     <aside className={`app-sidebar-right${isOpen ? '' : ' closed'}${agent ? ' agent-open' : ''}`} aria-label="Tools">
       <div className="rpanel-inner">
         <div className="rpanel-content">
           {agent ? (
-            <AgentPanel key={agent.context.length + String(agent.empty)} session={agent} />
+            <AgentPanel key={agent.id} session={agent} />
           ) : activeMath ? (
             <MathEditorPanel />
           ) : activeModel3d ? (

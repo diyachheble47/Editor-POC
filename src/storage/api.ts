@@ -154,7 +154,7 @@ export async function streamServerDocument(
 
 // ── AI generation ────────────────────────────────────────────────────────────
 
-export type AiKind = 'workbook' | 'lesson_plan' | 'lesson'
+export type AiKind = 'workbook' | 'lesson_plan' | 'lesson' | 'edit'
 
 export interface AiRequest {
   title: string
@@ -166,7 +166,13 @@ export interface AiRequest {
 
 /** A block the AI produced (already checked and cleaned by the server). */
 export type AiBlock =
+  | { type: 'keep'; ref: number } // edit mode: leave original block #ref as it was
   | { type: 'heading'; level: 1 | 2 | 3 }
+  | { type: 'section' } // starts a card; its title streams in like a heading's
+  | { type: 'toc' }
+  | { type: 'html'; title: string; code: string }
+  | { type: 'tabs'; items: { title: string; text: string }[] }
+  | { type: 'quiz'; questions: { q: string; options: string[]; answer: number; why: string }[] }
   | { type: 'paragraph' }
   | { type: 'list'; ordered: boolean; items: string[] }
   | { type: 'equation'; value: string } // chemical equation
@@ -222,4 +228,33 @@ export async function streamAiDocument(
     onEvent(event)
     return event.t === 'done' || event.t === 'error'
   }, signal)
+}
+
+
+/** One message of a document's AI agent conversation. */
+export interface AiChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  kind?: AiKind
+  /** Assistant results: what the user did with them. */
+  status?: 'accepted' | 'declined' | 'written' | 'error' | null
+  /** The start of what the AI produced, so the chat still shows it after Accept / Decline. */
+  peek?: string
+  at: number
+}
+
+export async function getAiChat(docId: string): Promise<AiChatMessage[]> {
+  const res = await request(`/documents/${encodeURIComponent(docId)}/ai-chat`)
+  return ((await res.json()) as { messages: AiChatMessage[] }).messages
+}
+
+export async function saveAiChat(docId: string, messages: AiChatMessage[]): Promise<void> {
+  await request(`/documents/${encodeURIComponent(docId)}/ai-chat`, { method: 'PUT', ...json({ messages }) })
+}
+
+/** Asks the AI for an interactive HTML widget (or a change to `current`). Returns the page's code. */
+export async function generateHtmlWidget(prompt: string, current = ''): Promise<string> {
+  const res = await request('/ai/html', { method: 'POST', ...json({ prompt, current }) }, 90000)
+  return ((await res.json()) as { code: string }).code
 }
