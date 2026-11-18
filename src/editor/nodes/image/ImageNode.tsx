@@ -18,6 +18,7 @@ import type {
   Spread,
 } from 'lexical'
 import { useEffect, useRef, useState } from 'react'
+import { ResizeFrame } from '../_shared/ResizeFrame'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
   saveAsset, getAsset, listAssetIds, assetUrlFor, assetIdFromUrl, isAssetUrl,
@@ -60,7 +61,7 @@ function newImageId(): string {
 }
 
 /** Object URL for a stored blob; revoked when the component unmounts. */
-function useAssetUrl(src: string): string | null {
+export function useAssetUrl(src: string): string | null {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
     if (!src) { setUrl(null); return }
@@ -77,7 +78,7 @@ function useAssetUrl(src: string): string | null {
   return url
 }
 
-function Thumb({ id, onPick }: { id: string; onPick: () => void }) {
+export function Thumb({ id, onPick }: { id: string; onPick: () => void }) {
   const url = useAssetUrl(assetUrlFor(id))
   return (
     <button type="button" className="img-thumb" onClick={onPick} title="Use this image">
@@ -149,9 +150,7 @@ function ImageComponent({
   nodeKey, src, alt, width,
 }: { nodeKey: NodeKey; src: string; alt: string; width: number }) {
   const [editor] = useLexicalComposerContext()
-  const [liveWidth, setLiveWidth] = useState<number | null>(null)
   const url = useAssetUrl(src)
-  const shown = liveWidth ?? width
 
   function update(fn: (node: ImageNode) => void) {
     editor.update(() => {
@@ -168,41 +167,20 @@ function ImageComponent({
       .catch(() => {})
   }
 
-  function startResize(e: React.PointerEvent) {
-    e.preventDefault()
-    e.stopPropagation()
-    const startX = e.clientX
-    const startWidth = shown
-    let latest = startWidth
-    function onMove(ev: PointerEvent) {
-      latest = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.round(startWidth + ev.clientX - startX)))
-      setLiveWidth(latest)
-    }
-    function onUp() {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      update((n) => n.setWidth(latest))
-      setLiveWidth(null)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
-
   if (!src) {
     return <div className="img-block" contentEditable={false}><UploadPanel onChoose={choose} /></div>
   }
 
   return (
     <div className="img-block" contentEditable={false}>
-      <div className="img-frame" style={{ width: shown }}>
+      <ResizeFrame width={width} min={MIN_WIDTH} max={MAX_WIDTH} onCommit={(w) => update((n) => n.setWidth(w))}>
         {url ? <img src={url} alt={alt} draggable={false} /> : <div className="img-loading" />}
         <button type="button" className="img-replace" onClick={() => {
           void pickImageFile().then(f => f && choose(f))
         }}>
           Replace
         </button>
-        <div className="img-resize-handle" title="Drag to resize" onPointerDown={startResize} />
-      </div>
+      </ResizeFrame>
     </div>
   )
 }

@@ -262,18 +262,6 @@ export const BLOCK_REGISTRY: BlockDef[] = [
 
   // ── MEDIA ────────────────────────────────────────────────────
   {
-    key: 'video',
-    label: 'Video',
-    icon: '🎥',
-    description: 'MP4 or WebM video.',
-    category: 'media',
-    status: 'coming-soon',
-    keywords: ['video', 'movie', 'clip'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
     key: 'audio',
     label: 'Audio',
     icon: '🔊',
