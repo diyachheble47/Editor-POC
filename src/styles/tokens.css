@@ -57,3 +57,41 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.05);
 }
+
+/* ── Dark theme ───────────────────────────────────────────────────
+   Same token names, different values. Switched by <html data-theme="dark">
+   (ThemeContext sets it; index.html sets it before first paint). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --c-ground:           #0f0f12;
+  --c-surface:          #17171c;
+  --c-surface-hover:    #1e1e25;
+  --c-surface-active:   #272731;
+
+  --c-border:           #26262f;
+  --c-border-strong:    #373743;
+
+  --c-text:             #ececf0;
+  --c-text-2:           #a3a3b0;
+  --c-text-3:           #71717e;
+  --c-text-placeholder: #5b5b67;
+
+  --c-accent:           #7c7ff0;
+  --c-accent-hover:     #9093f5;
+  --c-accent-text:      #a9abf8;
+  --c-accent-bg:        #1f2040;
+  --c-accent-muted:     rgba(124, 127, 240, 0.20);
+  --c-accent-surface:   rgba(124, 127, 240, 0.10);
+
+  --c-success:          #4ade80;
+  --c-success-bg:       #10261a;
+  --c-warn:             #fbbf24;
+  --c-warn-bg:          #2a2008;
+  --c-danger:           #f87171;
+  --c-danger-bg:        #2c1214;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
+}

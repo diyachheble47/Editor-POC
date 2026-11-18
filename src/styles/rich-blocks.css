@@ -1,0 +1,210 @@
+/* Rich document blocks: section cards, styled table, contents chips, tabs, quiz.
+   Colours come from tokens.css, so they follow the light/dark theme. */
+
+/* ── Section cards: drawn behind the editor, see SectionCardsPlugin ── */
+.editor-input { position: relative; z-index: 1; }
+.section-card {
+  position: absolute; left: -28px; right: -28px; z-index: 0; pointer-events: none;
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 16px;
+}
+.editor-input .section-heading { margin-top: 56px; font-size: 22px; letter-spacing: -0.015em; }
+
+/* ── Styled table ── */
+.rt-block { margin: 12px 0; border-radius: var(--r-lg); border: 1px solid transparent; }
+.rt-block:hover, .rt-editing { border-color: var(--c-border); }
+.rt-scroll { overflow-x: auto; }
+.rich-table { width: 100%; border-collapse: collapse; font-size: 14.5px; color: var(--c-text); }
+.rich-table th, .rich-table td { text-align: left; padding: 10px 12px; vertical-align: top; border-bottom: 1px solid var(--c-border); line-height: 1.5; }
+.rich-table th { background: var(--c-accent-bg); font-weight: 600; white-space: nowrap; }
+.rich-table th:first-child { border-top-left-radius: 8px; }
+.rich-table th:last-child { border-top-right-radius: 8px; }
+.rich-table tbody tr:hover td { background: var(--c-surface-hover); }
+.rich-table input {
+  width: 100%; min-width: 80px; box-sizing: border-box; font: inherit; font-weight: inherit; color: inherit;
+  background: var(--c-ground); border: 1px solid var(--c-border); border-radius: 6px; padding: 4px 8px;
+}
+.rich-table input:focus { outline: none; border-color: var(--c-accent); }
+.rt-col-actions td, .rt-row-actions { border-bottom: none !important; background: transparent !important; text-align: center; padding: 2px; width: 28px; }
+.rt-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 8px 4px; }
+.rt-hint { font-size: 12px; color: var(--c-text-3); }
+.rt-btn {
+  border: 1px solid var(--c-border-strong); background: transparent; color: var(--c-text-2); border-radius: 6px;
+  padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.rt-btn:hover { background: var(--c-surface-hover); color: var(--c-text); }
+.rt-x { border: none; background: transparent; color: var(--c-text-3); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+.rt-x:hover { color: var(--c-danger); }
+
+/* ── Contents chips ── */
+.toc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 8px; }
+.toc-chip {
+  border: none; cursor: pointer; font: inherit; font-size: 13px; color: var(--c-accent-text);
+  background: var(--c-accent-bg); padding: 6px 12px; border-radius: 999px;
+}
+.toc-chip:hover { background: var(--c-accent-muted); }
+.toc-empty { font-size: 13px; color: var(--c-text-3); }
+
+/* ── Tabs and quiz share an edit button and a form look ── */
+.rb-block { position: relative; margin: 14px 0; padding: 4px 0; }
+.rb-edit {
+  position: absolute; top: -2px; right: 0; z-index: 2; opacity: 0; transition: opacity var(--t-fast);
+  border: 1px solid var(--c-border); background: var(--c-surface); color: var(--c-text-2); border-radius: 6px;
+  padding: 2px 9px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.rb-block:hover .rb-edit, .rb-editing .rb-edit, .rb-edit:focus-visible { opacity: 1; }
+.rb-form { display: flex; flex-direction: column; gap: 8px; padding-top: 22px; }
+.rb-form-row { display: flex; align-items: center; gap: 8px; }
+.rb-input {
+  flex: 1; min-width: 0; box-sizing: border-box; font: inherit; font-size: 14px; color: var(--c-text);
+  background: var(--c-ground); border: 1px solid var(--c-border); border-radius: 6px; padding: 6px 9px; resize: vertical;
+}
+.rb-input:focus { outline: none; border-color: var(--c-accent); }
+
+.tabs-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+.tabs-pill {
+  font: inherit; font-size: 13.5px; cursor: pointer; color: var(--c-text); background: var(--c-surface);
+  border: 1px solid var(--c-border-strong); padding: 6px 14px; border-radius: 999px;
+}
+.tabs-pill:hover { background: var(--c-surface-hover); }
+.tabs-pill.active { background: var(--c-accent); border-color: var(--c-accent); color: #fff; }
+.tabs-panel { background: var(--c-accent-bg); color: var(--c-text); border-radius: 10px; padding: 12px 16px; line-height: 1.6; font-size: 15px; }
+
+.quiz-q { margin: 6px 0 18px; }
+.quiz-q-text { font-weight: 600; margin-bottom: 6px; }
+.quiz-opt {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 14.5px; cursor: pointer; margin: 6px 0;
+  padding: 10px 14px; border-radius: 10px; color: var(--c-text); background: var(--c-ground); border: 1px solid var(--c-border-strong);
+}
+.quiz-opt:hover:not(:disabled) { border-color: var(--c-accent); }
+.quiz-opt:disabled { cursor: default; }
+.quiz-opt.correct { border-color: var(--c-success); color: var(--c-success); font-weight: 600; }
+.quiz-opt.wrong { border-color: var(--c-danger); color: var(--c-danger); }
+.quiz-feedback { font-size: 13.5px; color: var(--c-text-2); min-height: 1.4em; }
+.quiz-edit-q { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--c-border); border-radius: 10px; }
+
+/* ── Interactive HTML block ── */
+.html-block { margin: 16px 0; }
+
+/* first use */
+.html-onboarding {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 28px 24px 22px;
+  border: 1px dashed var(--c-border-strong); border-radius: 16px; background: var(--c-accent-surface);
+}
+.html-onboard-icon {
+  width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--c-accent-bg); font-size: 20px; margin-bottom: 4px;
+}
+.html-onboard-title { font-size: 17px; font-weight: 600; color: var(--c-text); }
+.html-onboard-sub { font-size: 13.5px; color: var(--c-text-2); max-width: 440px; margin-bottom: 10px; }
+.html-onboarding .html-ask { width: 100%; max-width: 560px; }
+
+/* prompt bar (first use and "Ask AI") */
+.html-ask { display: flex; flex-direction: column; gap: 10px; }
+.html-ask-row { display: flex; gap: 8px; }
+.html-ask-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--c-text); background: var(--c-surface);
+  border: 1px solid var(--c-border-strong); border-radius: 10px; padding: 10px 14px;
+}
+.html-ask-input:focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-muted); }
+.html-go {
+  flex-shrink: 0; border: none; border-radius: 10px; padding: 0 18px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  background: var(--c-accent); color: #fff;
+}
+.html-go:hover:not(:disabled) { background: var(--c-accent-hover); }
+.html-go:disabled { opacity: 0.45; cursor: default; }
+.html-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.html-chip {
+  font: inherit; font-size: 12.5px; cursor: pointer; color: var(--c-text-2); background: var(--c-surface);
+  border: 1px solid var(--c-border); border-radius: 999px; padding: 5px 12px;
+}
+.html-chip:hover { border-color: var(--c-accent); color: var(--c-accent-text); }
+.html-status { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--c-text-2); }
+.html-error { font-size: 13px; color: var(--c-danger); text-align: center; }
+.html-link { border: none; background: none; padding: 0; font: inherit; font-size: 13px; color: var(--c-accent-text); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.html-onboarding .html-link { margin-top: 6px; }
+.html-spinner {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--c-border-strong); border-top-color: var(--c-accent);
+  display: inline-block; animation: html-spin 0.8s linear infinite;
+}
+@keyframes html-spin { to { transform: rotate(360deg); } }
+
+/* the activity */
+.html-card { border: 1px solid var(--c-border); border-radius: 16px; background: var(--c-ground); padding: 10px 14px 14px; }
+.html-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.html-title-input {
+  flex: 1; min-width: 0; font: inherit; font-size: 15px; font-weight: 600; color: var(--c-text); background: transparent;
+  border: 1px solid transparent; border-radius: 6px; padding: 3px 6px; margin-left: -6px;
+}
+.html-title-input:hover { border-color: var(--c-border); }
+.html-title-input:focus { outline: none; border-color: var(--c-accent); background: var(--c-surface); }
+.html-title-input::placeholder { color: var(--c-text-3); font-weight: 500; }
+.html-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.html-act {
+  font: inherit; font-size: 12.5px; cursor: pointer; color: var(--c-text-2); background: transparent;
+  border: 1px solid transparent; border-radius: 8px; padding: 4px 10px;
+}
+.html-act:hover { background: var(--c-surface-hover); color: var(--c-text); }
+.html-act.on { background: var(--c-accent-bg); color: var(--c-accent-text); }
+
+.html-body { position: relative; }
+.html-stage { position: relative; }
+.html-frame { display: block; width: 100%; border: none; background: transparent; transition: opacity 0.15s; }
+.html-skeleton { position: absolute; inset: 0; border-radius: 10px; background: var(--c-surface-hover); animation: html-pulse 1.2s ease-in-out infinite; }
+@keyframes html-pulse { 50% { opacity: 0.5; } }
+.html-empty {
+  display: flex; align-items: center; justify-content: center; min-height: 120px; border-radius: 10px; font-size: 13px;
+  color: var(--c-text-3); background: var(--c-surface-hover);
+}
+.html-busy .html-stage { opacity: 0.45; pointer-events: none; }
+.html-busy-note {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 999px; font-size: 13px; color: var(--c-text); background: var(--c-surface); border: 1px solid var(--c-border); box-shadow: var(--shadow-md);
+}
+.html-undo { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--c-text-3); }
+.html-card .html-ask { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--c-border); }
+.html-card .html-chips { justify-content: flex-start; }
+.html-code-wrap { margin-top: 12px; }
+.html-card > .hc { margin-top: 12px; }
+
+/* Code box: same look as the editor's Code block (dark in both themes) */
+.hc { border-radius: 12px; overflow: hidden; border: 1px solid #2d2f3a; background: #1e1f27; }
+.hc-head { height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 14px; background: #171820; border-bottom: 1px solid #262833; user-select: none; }
+.hc-lang { font: 500 12.5px var(--font-ui); color: #c9d1d9; }
+.hc-btn { background: transparent; color: #9aa1b2; border: none; border-radius: 6px; font: 500 12px var(--font-ui); padding: 5px 9px; cursor: pointer; }
+.hc-btn:hover { background: rgba(255, 255, 255, 0.07); color: #f8f8f2; }
+.hc-body { position: relative; font-family: var(--font-mono); font-size: 13px; line-height: 1.7; }
+.hc-gutter, .hc-layer, .hc-input {
+  position: absolute; top: 0; bottom: 0; margin: 0; box-sizing: border-box; font: inherit; line-height: inherit;
+  white-space: pre; tab-size: 2; letter-spacing: normal;
+}
+.hc-gutter { left: 0; width: 50px; padding: 14px 14px 14px 0; text-align: right; color: #636d83; overflow: hidden; user-select: none; pointer-events: none; }
+.hc-layer, .hc-input { left: 50px; right: 0; padding: 14px 18px 14px 12px; }
+.hc-layer { overflow: hidden; color: #f8f8f2; pointer-events: none; }
+.hc-input {
+  width: calc(100% - 50px); resize: none; overflow: auto; border: none; outline: none; background: transparent;
+  color: transparent; caret-color: #f8f8f2; scrollbar-color: #3a3d4a transparent; scrollbar-width: thin;
+}
+.hc-input::selection { background: rgba(120, 140, 255, 0.35); }
+.hc-input::placeholder { color: #636d83; }
+.hc-hint { padding: 7px 14px; font-size: 12px; color: #9aa1b2; background: #171820; border-top: 1px solid #262833; }
+/* Prism token colours (same palette as the Code block) */
+.hc-layer .token.comment, .hc-layer .token.prolog, .hc-layer .token.doctype, .hc-layer .token.cdata { color: #7f848e; font-style: italic; }
+.hc-layer .token.punctuation { color: #f8f8f2; }
+.hc-layer .token.tag, .hc-layer .token.keyword, .hc-layer .token.operator, .hc-layer .token.atrule, .hc-layer .token.selector { color: #ff79c6; }
+.hc-layer .token.attr-name, .hc-layer .token.function, .hc-layer .token.class-name { color: #50fa7b; }
+.hc-layer .token.attr-value, .hc-layer .token.string { color: #e6db74; }
+.hc-layer .token.number, .hc-layer .token.boolean, .hc-layer .token.property, .hc-layer .token.constant { color: #bd93f9; }
+.hc-layer .token.builtin, .hc-layer .token.regex { color: #8be9fd; }
+.hc-layer .token.entity { color: #ffb86c; }
+
+/* Reading view of the interactive block: just the activity; Edit appears on hover */
+.html-view { position: relative; }
+.html-view .html-title { margin: 0 0 6px; }
+.html-edit-pill {
+  position: absolute; top: 6px; right: 6px; z-index: 2; opacity: 0; transition: opacity var(--t-fast);
+  font: inherit; font-size: 12px; cursor: pointer; color: var(--c-text-2); background: var(--c-surface);
+  border: 1px solid var(--c-border); border-radius: 999px; padding: 3px 11px; box-shadow: var(--shadow-sm);
+}
+.html-view:hover .html-edit-pill, .html-edit-pill:focus-visible { opacity: 1; }
+.html-done { background: var(--c-accent); color: #fff; }
+.html-done:hover { background: var(--c-accent-hover); color: #fff; }

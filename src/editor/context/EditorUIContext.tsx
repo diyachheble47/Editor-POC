@@ -40,10 +40,12 @@ export type BlockType =
   | 'number'
   | 'other'
 
-/** The /agent panel: opened on an empty document, or on one that has content. */
+/** The /agent panel. `run` starts a generation as soon as it opens (from the /agent dropdown). */
 export interface AgentSession {
-  empty: boolean
-  context: string
+  id: number
+  run?: { kind: 'workbook' | 'lesson_plan' | 'lesson'; prompt: string }
+  /** Opened from selected text: the AI edits only these top-level blocks. */
+  scope?: { keys: string[]; text: string }
 }
 
 interface EditorUIState {

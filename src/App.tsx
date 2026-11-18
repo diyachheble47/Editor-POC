@@ -4,8 +4,10 @@ import { AppLayout } from './components/AppLayout'
 import { EditorUIProvider } from './editor/context/EditorUIContext'
 import { EditorFormatProvider } from './editor/context/EditorFormatContext'
 import { DocumentProvider, useDocument } from './context/DocumentContext'
+import { ThemeProvider } from './context/ThemeContext'
 import './styles/tokens.css'
 import './App.css'
+import './styles/rich-blocks.css'
 
 // Keyed by activeDocId so switching documents fully remounts the Lexical
 // editor (and the node-key-scoped EditorUIContext state alongside it)
@@ -38,9 +40,11 @@ function EditorRoot() {
 
 function App() {
   return (
-    <DocumentProvider>
-      <EditorRoot />
-    </DocumentProvider>
+    <ThemeProvider>
+      <DocumentProvider>
+        <EditorRoot />
+      </DocumentProvider>
+    </ThemeProvider>
   )
 }
 
