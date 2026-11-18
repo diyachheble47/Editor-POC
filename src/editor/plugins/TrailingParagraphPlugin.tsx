@@ -39,7 +39,14 @@ export function TrailingParagraphPlugin() {
       const target = e.target as HTMLElement
       if (target.closest('.editor-input, input, textarea, button, select, aside')) return
       if (!editor.isEditable()) return
-      editor.focus(() => editor.update(() => { $getRoot().selectEnd() }))
+      // Only a click really below the last block moves the caret to the end.
+      // Clicks on side margins or while leaving a block must not jump the page.
+      const input = editor.getRootElement()
+      const last = input?.lastElementChild
+      if (!last || e instanceof MouseEvent === false) return
+      if ((e as MouseEvent).clientY <= last.getBoundingClientRect().bottom) return
+      editor.update(() => { $getRoot().selectEnd() }, { tag: 'skip-scroll-into-view' })
+      input?.focus({ preventScroll: true })
     }
     scroller?.addEventListener('click', onClick)
 

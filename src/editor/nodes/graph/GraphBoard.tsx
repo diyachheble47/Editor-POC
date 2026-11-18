@@ -5,6 +5,7 @@
 // what the user does back to GraphNode.
 
 import { useEffect, useRef } from 'react'
+import { useTheme } from '../../../context/ThemeContext'
 import JXG from 'jsxgraph'
 import './jsxgraph.css' // copied from the jsxgraph package (its exports map hides the css file)
 import { compileExpr } from './expr'
@@ -37,6 +38,7 @@ export default function GraphBoard(props: GraphBoardProps) {
   // Zoom/pan survives the redraws that follow each edit, and resets when editing ends.
   const view = useRef<[number, number, number, number]>([-RANGE, RANGE, RANGE, -RANGE])
   const { points, edges, functions, editing, selected } = props
+  const { theme } = useTheme() // axes/labels read CSS colours when drawn, so redraw on a theme change
 
   useEffect(() => {
     const host = hostRef.current
@@ -118,7 +120,7 @@ export default function GraphBoard(props: GraphBoardProps) {
       host.removeEventListener('wheel', onWheelEnd)
       JXG.JSXGraph.freeBoard(board)
     }
-  }, [points, edges, functions, editing, selected, props.colors])
+  }, [points, edges, functions, editing, selected, props.colors, theme])
 
   return <div ref={hostRef} className="graph-board jxgbox" />
 }

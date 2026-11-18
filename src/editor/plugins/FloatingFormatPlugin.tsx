@@ -7,9 +7,11 @@ import {
   $createParagraphNode,
   FORMAT_TEXT_COMMAND,
 } from 'lexical'
+import type { LexicalNode } from 'lexical'
 import { $setBlocksType } from '@lexical/selection'
 import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text'
 import { useEditorFormat } from '../context/EditorFormatContext'
+import { useEditorUI } from '../context/EditorUIContext'
 import type { BlockType } from '../context/EditorUIContext'
 
 interface ToolbarPos { top: number; left: number }
@@ -25,6 +27,7 @@ const BLOCK_BTNS: { type: BlockType; label: string; title: string }[] = [
 export function FloatingFormatPlugin() {
   const [editor] = useLexicalComposerContext()
   const { isBold, isItalic, isUnderline, isStrikethrough, isCode, blockType } = useEditorFormat()
+  const { agent, update: updateUI } = useEditorUI()
   const [pos, setPos] = useState<ToolbarPos | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
 
@@ -65,6 +68,29 @@ export function FloatingFormatPlugin() {
       }
     })
   }, [editor, blockType])
+
+  // ✨: send the selected blocks to the AI agent chat to be edited (only them).
+  const askAi = useCallback(() => {
+    const scope = editor.getEditorState().read(() => {
+      const selection = $getSelection()
+      if (!$isRangeSelection(selection) || selection.isCollapsed()) return null
+      const topOf = (node: LexicalNode): LexicalNode => {
+        let cur = node
+        while (cur.getParent() && cur.getParent()!.getKey() !== 'root') cur = cur.getParent()!
+        return cur
+      }
+      const a = topOf(selection.anchor.getNode())
+      const b = topOf(selection.focus.getNode())
+      const [from, to] = [a.getIndexWithinParent(), b.getIndexWithinParent()].sort((x, y) => x - y)
+      const root = a.getParent()
+      if (!root) return null
+      const keys = root.getChildren().slice(from, to + 1).map(n => n.getKey())
+      return { keys, text: selection.getTextContent().replace(/\s+/g, ' ').trim().slice(0, 300) }
+    })
+    if (!scope) return
+    // Keep the open panel (and its chat) when there is one; only the scope changes.
+    updateUI({ agent: { ...(agent ?? { id: Date.now() }), run: undefined, scope }, activeMath: null, activeModel3d: null })
+  }, [editor, agent, updateUI])
 
   if (!pos) return null
 
@@ -121,6 +147,10 @@ export function FloatingFormatPlugin() {
           onClick={() => applyBlockType(type)}
         >{label}</button>
       ))}
+
+      <span className="fft-divider" aria-hidden="true" />
+
+      <button type="button" className="fft-btn fft-ai" title="Edit the selection with AI" onClick={askAi}>✨ AI</button>
     </div>,
     document.body,
   )

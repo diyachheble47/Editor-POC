@@ -18,6 +18,7 @@ import { EditorStatePlugin } from './plugins/EditorStatePlugin'
 import { FloatingFormatPlugin } from './plugins/FloatingFormatPlugin'
 import { OutlinePlugin } from './plugins/OutlinePlugin'
 import { TrailingParagraphPlugin } from './plugins/TrailingParagraphPlugin'
+import { SectionCardsPlugin } from './plugins/SectionCardsPlugin'
 import { useDocument } from '../context/DocumentContext'
 
 export function EditorArea() {
@@ -55,6 +56,7 @@ export function EditorArea() {
           {/* Core plugins */}
           <HistoryPlugin />
           <TrailingParagraphPlugin />
+          <SectionCardsPlugin />
           <ListPlugin />
           <HorizontalRulePlugin />
           <TablePlugin />

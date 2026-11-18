@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import type { NodeKey } from 'lexical'
 import { $getExcalidrawNodeByKey } from './ExcalidrawNode'
+import { useTheme } from '../../../context/ThemeContext'
 import '@excalidraw/excalidraw/index.css'
 
 const Excalidraw = lazy(() =>
@@ -22,6 +23,7 @@ interface Props {
 
 export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) {
   const [editor] = useLexicalComposerContext()
+  const { theme } = useTheme()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isActive, setIsActive] = useState(false)
   const inlineAPIRef = useRef<ExcalidrawAPI | null>(null)
@@ -121,6 +123,7 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
           <div className="excalidraw-loading">Loading canvas…</div>
         }>
           <Excalidraw
+            theme={theme}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             excalidrawAPI={(api: any) => { inlineAPIRef.current = api }}
             initialData={initialData}
@@ -171,6 +174,7 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
           <div className="excalidraw-canvas-wrap">
             <Suspense fallback={<div style={{ padding: 24, color: 'var(--c-text-3)' }}>Loading…</div>}>
               <Excalidraw
+                theme={theme}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 excalidrawAPI={(api: any) => { fullscreenAPIRef.current = api }}
                 initialData={initialData}

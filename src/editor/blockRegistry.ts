@@ -8,7 +8,7 @@ import { $createCodeNode } from '@lexical/code-core'
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode'
 import { $createEquationNode } from './nodes/EquationNode'
 
-export type BlockCategory = 'basic' | 'layout' | 'media' | 'stem' | 'chemistry'
+export type BlockCategory = 'ai' | 'basic' | 'layout' | 'media' | 'stem' | 'chemistry'
 export type BlockStatus = 'available' | 'coming-soon'
 
 export interface BlockDef {
@@ -69,7 +69,7 @@ function insertWithCommand(editor: LexicalEditor, run: () => void) {
   })
 }
 
-function insertWithBlocksType(
+export function insertWithBlocksType(
   editor: LexicalEditor,
   createNode: () => ElementNode,
 ) {
@@ -350,9 +350,10 @@ export const BLOCK_REGISTRY: BlockDef[] = [
 
 ]
 
-export const CATEGORY_ORDER: BlockCategory[] = ['basic', 'layout', 'media', 'stem', 'chemistry']
+export const CATEGORY_ORDER: BlockCategory[] = ['ai', 'basic', 'layout', 'media', 'stem', 'chemistry']
 
 export const CATEGORY_LABELS: Record<BlockCategory, string> = {
+  ai: 'AI',
   basic: 'Basic',
   layout: 'Layout',
   media: 'Media',
@@ -401,23 +402,31 @@ export function getTools(): readonly ToolDef[] {
   return TOOL_REGISTRY
 }
 
-// "/agent": opens the AI agent panel. The document's text (without the typed
-// "/agent") travels with the event so the panel can use it as context. Runs
-// inside the typeahead's editor update, so it reads with $getRoot directly.
-BLOCK_REGISTRY.unshift({
-  key: 'agent',
-  label: 'AI Agent',
-  icon: '✨',
-  description: 'Generate a lesson, lesson plan or workbook with AI',
-  category: 'basic',
-  status: 'available',
-  keywords: ['agent', 'ai', 'generate', 'lesson', 'workbook', 'plan', 'gemini'],
-  inSlash: true,
-  inSidebar: false,
-  insert: () => {
-    const root = $getRoot()
-    const empty = root.getChildren().every(c => $isParagraphNode(c) && c.getTextContent().trim() === '')
-    const context = empty ? '' : root.getTextContent().replace(/\n{2,}/g, '\n').slice(0, 30000)
-    window.dispatchEvent(new CustomEvent('tnb:open-agent', { detail: { empty, context } }))
+// "/agent": a submenu, not a block. SlashCommandPlugin opens it beside the list
+// (AgentFlyout): three fill-in-the-blank sentences that start the AI agent.
+BLOCK_REGISTRY.unshift(
+  {
+    key: 'agent',
+    label: 'Agent',
+    icon: '✨',
+    description: 'Create a workbook, lesson or lesson plan with AI',
+    category: 'ai',
+    status: 'available',
+    keywords: ['agent', 'ai', 'generate', 'lesson', 'workbook', 'plan', 'gemini'],
+    inSlash: true,
+    inSidebar: false,
+    insert: () => { /* handled by SlashCommandPlugin (submenu) */ },
   },
-})
+  {
+    key: 'ai-generate',
+    label: 'Generate',
+    icon: '⚡',
+    description: 'Generate content from a prompt',
+    category: 'ai',
+    status: 'coming-soon',
+    keywords: ['generate', 'ai', 'write'],
+    inSlash: true,
+    inSidebar: false,
+    insert: () => {},
+  },
+)

@@ -36,7 +36,7 @@
     /* for IE 7 */
     position: relative;
     overflow: hidden;
-    background-color: #fff;
+    background-color: var(--c-surface, #fff);
     border-style: solid;
     border-width: 1px;
     border-color: #356aa0;
@@ -195,9 +195,9 @@
 .smart-label-outline {
     padding: 1px 7px 1px 7px;
     margin: 0;
-    border: solid 2px black;
-    background-color: white !important;
-    color: black !important;
+    border: solid 2px var(--c-text, black);
+    background-color: var(--c-surface, white) !important;
+    color: var(--c-text, black) !important;
     border-radius: 15px;
     text-align: center;
     vertical-align: middle;
