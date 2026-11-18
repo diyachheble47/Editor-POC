@@ -42,3 +42,21 @@ class SegmentOut(BaseModel):
     updatedAt: str
     revision: int
 
+
+
+class ChatMessage(BaseModel):
+    id: str = Field(max_length=64)
+    role: str = Field(pattern="^(user|assistant)$")
+    text: str = Field(max_length=4000)
+    kind: str | None = Field(default=None, max_length=20)
+    status: str | None = Field(default=None, max_length=20)
+    peek: str | None = Field(default=None, max_length=600)
+    at: int = 0
+
+
+class ChatIn(BaseModel):
+    messages: list[ChatMessage] = Field(max_length=200)
+
+
+class ChatOut(BaseModel):
+    messages: list[ChatMessage]

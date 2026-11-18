@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from ..db import LOCAL_OWNER_ID, get_conn
 from ..sse import sse
-from ..schemas import DocumentCreate, DocumentOut, DocumentPatch, SegmentIn, SegmentOut
+from ..schemas import ChatIn, ChatOut, DocumentCreate, DocumentOut, DocumentPatch, SegmentIn, SegmentOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -210,3 +210,23 @@ async def stream_document(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# The AI agent panel's conversation for one document, so reopening the
+# document brings the chat back.
+@router.get("/{doc_id}/ai-chat", response_model=ChatOut)
+def get_ai_chat(doc_id: str, conn: sqlite3.Connection = Depends(get_conn)):
+    get_doc_row(conn, doc_id)
+    row = conn.execute("SELECT messages FROM ai_chats WHERE document_id = ?", (doc_id,)).fetchone()
+    return ChatOut(messages=json.loads(row["messages"]) if row else [])
+
+
+@router.put("/{doc_id}/ai-chat", response_model=ChatOut)
+def put_ai_chat(doc_id: str, body: ChatIn, conn: sqlite3.Connection = Depends(get_conn)):
+    get_doc_row(conn, doc_id)
+    conn.execute(
+        "INSERT INTO ai_chats (document_id, messages, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(document_id) DO UPDATE SET messages = excluded.messages, updated_at = excluded.updated_at",
+        (doc_id, json.dumps([m.model_dump() for m in body.messages]), now()),
+    )
+    return ChatOut(messages=body.messages)

@@ -27,6 +27,29 @@ CIRCUIT_PARTS = {
 }
 MAX_TABLE_ROWS, MAX_TABLE_COLS, MAX_CELL = 20, 8, 200
 MAX_MATRIX = 6
+MAX_TABS, MAX_QUESTIONS, MAX_OPTIONS = 8, 10, 6
+MAX_HTML = 20000
+# Interactive HTML runs in a locked iframe (no network, no access to the page), which is the
+# real protection. This only turns away code that could not work there anyway (it needs a
+# network, a CDN or the parent page), so the teacher gets a clear "try again" instead of a
+# widget that silently does nothing.
+_UNSAFE_HTML = re.compile(
+    r"<script[^>]+\bsrc\s*=|<link[^>]+\bhref\s*=|@import|\bfetch\s*\(|XMLHttpRequest|WebSocket|EventSource|"
+    r"sendBeacon|window\s*\.\s*(top|parent|opener)|\b(top|parent)\s*\.\s*(location|document)|"
+    r"document\s*\.\s*cookie|<iframe|<object|<embed|\bimport\s*\(",
+    re.I,
+)
+_HTML_FENCE = re.compile(r"^```(?:html)?\s*|\s*```$", re.I)
+
+
+def clean_html(code: object) -> Optional[str]:
+    """A model's HTML answer -> a self-contained snippet, or None if empty / needs the network."""
+    if not isinstance(code, str):
+        return None
+    code = _HTML_FENCE.sub("", code.strip()).strip()
+    if not code or len(code) > MAX_HTML or "<" not in code:
+        return None
+    return None if _UNSAFE_HTML.search(code) else code
 MAX_FUNCTIONS, MAX_POINTS, MAX_POLYGONS, MAX_SEGMENTS = 5, 30, 6, 30
 MAX_PARTS, MAX_WIRES = 30, 60
 PLANE = 10  # graph/geometry axes run from -10 to 10
@@ -158,6 +181,57 @@ def sanitize_block(raw: object) -> Optional[dict]:
     if not isinstance(raw, dict):
         return None
     kind = raw.get("type")
+
+    if kind == "keep":
+        # Edit mode only: "leave block #ref exactly as it was".
+        ref = raw.get("ref")
+        if isinstance(ref, bool) or not isinstance(ref, int) or not 0 <= ref < 1000:
+            return None
+        return {"type": "keep", "ref": ref}
+
+    if kind == "section":
+        # Starts a card in the editor (a level-2 heading that groups what follows).
+        text = _text(raw.get("text"), 200)
+        return {"type": "section", "text": text} if text else None
+
+    if kind == "toc":
+        return {"type": "toc"}
+
+    if kind == "html":
+        code = clean_html(raw.get("code"))
+        return {"type": "html", "title": _text(raw.get("title"), 80) or "", "code": code} if code else None
+
+    if kind == "tabs":
+        items = raw.get("items")
+        if not isinstance(items, list):
+            return None
+        clean = []
+        for item in items[:MAX_TABS]:
+            if not isinstance(item, dict):
+                continue
+            title, text = _text(item.get("title"), 80), _text(item.get("text"), 600)
+            if title and text:
+                clean.append({"title": title, "text": text})
+        return {"type": "tabs", "items": clean} if len(clean) >= 2 else None
+
+    if kind == "quiz":
+        questions = raw.get("questions")
+        if not isinstance(questions, list):
+            return None
+        clean_q = []
+        for item in questions[:MAX_QUESTIONS]:
+            if not isinstance(item, dict):
+                continue
+            q = _text(item.get("q"), 300)
+            opts = item.get("options")
+            if not q or not isinstance(opts, list):
+                continue
+            options = [t for t in (_text(o, 200) for o in opts[:MAX_OPTIONS]) if t]
+            answer = item.get("answer")
+            if len(options) < 2 or isinstance(answer, bool) or not isinstance(answer, int) or not 0 <= answer < len(options):
+                continue
+            clean_q.append({"q": q, "options": options, "answer": answer, "why": _text(item.get("why"), 300) or ""})
+        return {"type": "quiz", "questions": clean_q} if clean_q else None
 
     if kind == "heading":
         text = _text(raw.get("text"), 200)

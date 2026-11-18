@@ -30,6 +30,11 @@ CREATE TABLE IF NOT EXISTS document_segments (
     updated_at  TEXT NOT NULL,
     UNIQUE (document_id, position)
 );
+CREATE TABLE IF NOT EXISTS ai_chats (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+    messages    TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
 """
 
 

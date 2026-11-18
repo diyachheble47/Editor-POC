@@ -5,7 +5,10 @@ Reply with ONE JSON object per line (JSON Lines). No markdown, no code fences,
 no commentary before or after. Each line is one block of the document, in order.
 The allowed blocks are exactly these:
 
-{"type":"heading","level":1,"text":"..."}            level is 1, 2 or 3
+{"type":"heading","level":1,"text":"..."}            level is 1 (the title) or 3 (a sub-part inside a section)
+{"type":"section","text":"1. Introduction"}          a major part of the document. The editor draws a card around
+      this heading and everything after it, up to the next section. Number them "1. ", "2. "...
+{"type":"toc"}                                        chips that jump to each section. Put ONE right after the intro.
 {"type":"paragraph","text":"..."}
 {"type":"bullets","items":["...","..."]}
 {"type":"numbered","items":["...","..."]}
@@ -16,8 +19,17 @@ The allowed blocks are exactly these:
 {"type":"divider"}
 {"type":"code","language":"python","text":"..."}      a short code snippet (use \\n inside the string for new lines)
 {"type":"table","rows":[["Acid","Formula"],["Hydrochloric","HCl"]]}
-      an editable table; first row is usually the header. At most 20 rows x 8 columns.
-      A cell that starts with = is a spreadsheet formula, e.g. "=SUM(B2:B4)" (cells are A1, B2, ...).
+      a clean table; the FIRST row is the header (shown in a coloured band). At most 20 rows x 8 columns.
+      Only if you need calculations, a cell that starts with = is a spreadsheet formula, e.g. "=SUM(B2:B4)"
+      (cells are A1, B2, ...); such a table becomes a spreadsheet grid instead.
+{"type":"html","title":"Pendulum simulator","code":"<!doctype html>...a complete self-contained page..."}
+      an interactive activity (a simulation with sliders, a drag-and-drop game, a poll). ONLY when the teacher
+      asked for something interactive; otherwise never. At most 2. See HTML RULES below.
+{"type":"tabs","items":[{"title":"1. Modeling","text":"..."},{"title":"2. Texturing","text":"..."}]}
+      pills that each reveal a short text: the steps of a process, stages, categories. 2-8 items.
+{"type":"quiz","questions":[{"q":"What is 2+2?","options":["3","4","5"],"answer":1,"why":"Two plus two is four."}]}
+      multiple-choice questions that show right or wrong when clicked. answer is the 0-based index of the
+      correct option. 2-6 options each, 3-5 questions, a one-line why for each.
 {"type":"matrix","rows":[["1","0"],["0","1"]]}        a maths matrix, at most 6 x 6
 {"type":"graph","functions":["x^2","2*x+1"],"points":[[1,1],[2,4]],"connect":false}
       a coordinate graph from -10 to 10 on both axes. functions use x, + - * / ^ and
@@ -48,8 +60,17 @@ The allowed blocks are exactly these:
       PARALLEL / BRANCHES: add two parts of type "wire" as junctions (ids j1, j2): battery->j1,
       j1->r1->j2, j1->r2->j2, j2->battery. At most 10 parts per circuit.
 
+HTML RULES (for the html block): one self-contained page: inline <style> and <script>, plain JavaScript, no
+external files, no CDN, no network calls, no iframes. Under 8000 characters. Do not use vh units or fixed
+page heights (the block sizes itself to the content). Colours: use var(--c-text), var(--c-surface),
+var(--c-border), var(--c-accent), var(--c-accent-bg), var(--c-success), var(--c-danger) with sensible
+fallbacks so it fits light and dark themes. Make it work by mouse and keyboard, and do not use alert,
+confirm or prompt. It must be teaching something real about the topic, never a generic counter or button.
+
 Rules:
-- Start with one level-1 heading that is the document title.
+- Start with one level-1 heading that is the document title, then a short intro paragraph, then a toc block.
+- Organise the document into numbered section blocks (never level-2 headings). Inside a section use
+  level-3 headings for sub-parts.
 - Use only the block types above. Keep each paragraph under 90 words.
 - Use tables, charts, flowcharts, graphs, molecules, circuits and geometry where they genuinely help
   a teacher (a comparison, data, a process, a function being studied, a structure being named, a
@@ -62,11 +83,17 @@ Rules:
 """
 
 INTERACTIVE = """\
+STRUCTURE: title, intro paragraph, toc, then 5-9 numbered sections ("1. Introduction", "2. ..."). Each section
+holds its own paragraphs, tables, callouts and diagrams, so the page reads as a set of cards.
+
 MAKE IT RICH, NOT A WALL OF TEXT, BUT EVERY BLOCK MUST EARN ITS PLACE. The editor can show much
 more than paragraphs. Use a wide MIX of block types, always chosen by what the content needs.
 
 Block types that fit almost any subject (use them freely and in variety):
-- table: comparisons, data, schedules, rubrics, match-the-following, answer keys.
+- table: comparisons, data, schedules, rubrics, match-the-following, answer keys. Always give it a header row.
+- tabs: a process or a set of stages with 3-6 steps (a pipeline, a method, phases, types). Use at least
+  one whenever the topic has steps; keep each text under 40 words.
+- quiz: a short self-check (3-5 questions) in the last section of any lesson.
 - callout (info, tip, warning, caution): key ideas, tips, common mistakes, safety. At least 3,
   in different variants.
 - list: steps, examples, questions, objectives. equation: any formula or worked step.
@@ -100,19 +127,19 @@ KINDS = {
     "workbook": (
         "a student WORKBOOK",
         "Structure: a callout with the learning objectives; a short recap with a summary table of "
-        "the key terms or formulas; then practice sections, each with its own heading: multiple choice "
+        "the key terms or formulas; then practice parts, each its own section block: multiple choice "
         "(numbered list with the options), fill in the blanks, match the following (a two-column "
         "table), true/false, a data-analysis question with a data table and a chart, a graph or diagram question "
         "(include the graph, chart or flowchart, and a circuit, molecule or geometry only if the topic is about it), short answer, and "
         "two or three problem-solving questions with equations; a challenge question in a tip "
-        "callout; end with a divider and an 'Answer key' heading with the answers (a table works well). "
+        "callout; end with a divider and an 'Answer key' section with the answers (a table works well). "
         "Aim for 45-60 blocks.",
     ),
     "lesson_plan": (
         "a teacher's LESSON PLAN",
         "Structure: lesson title; a table of lesson details (class, duration, topic, prerequisites); "
         "a callout with the learning objectives; materials (bullets); a timed TABLE of stages "
-        "(stage, minutes, teacher activity, student activity); then each stage under its own heading "
+        "(stage, minutes, teacher activity, student activity); then each stage as its own section block "
         "with the real content: warm-up, direct instruction (key explanations, formulas as equations, "
         "and the diagrams, graphs, charts or flowcharts to draw on the board), guided activity, "
         "independent practice, assessment/exit ticket with questions; a rubric or success-criteria "
@@ -122,16 +149,18 @@ KINDS = {
     "lesson": (
         "a student LESSON BUILDER output (the explanatory lesson content itself)",
         "Structure: a hook or real-world connection (a quote or callout); a learning-objectives "
-        "callout; clear sections with headings, each explained in short paragraphs and backed by a "
+        "callout; clear sections (section blocks), each explained in short paragraphs and backed by a "
         "visual (chart, flowchart, graph, table or a topic-specific diagram, as the content needs); a comparison "
         "or summary table for each group of related ideas; worked examples with step-by-step "
-        "equations; callouts for key points, tips and common mistakes; a summary; a short "
-        "check-your-understanding section with questions. Aim for 40-55 blocks.",
+        "equations; callouts for key points, tips and common mistakes; a summary; tabs for any process with steps; a final "
+        "check-your-understanding section holding a quiz block (3-5 questions). Aim for 40-55 blocks.",
     ),
 }
 
 
 def build_system_prompt(kind: str) -> str:
+    if kind == "edit":
+        return EDIT_SYSTEM
     label, structure = KINDS[kind]
     return (
         f"You are an expert science teacher writing {label} for other teachers to use in a "
@@ -139,7 +168,12 @@ def build_system_prompt(kind: str) -> str:
     )
 
 
-def build_user_prompt(title: str, description: str, context: str = "") -> str:
+def build_user_prompt(title: str, description: str, context: str = "", kind: str = "") -> str:
+    if kind == "edit":
+        return (
+            f"Document title: {title}\n\nTeacher's instruction:\n{description.strip()}\n\n"
+            f"--- document blocks ---\n{context.strip()}\n--- end of document blocks ---"
+        )
     parts = [f"Title: {title}"]
     if description.strip():
         parts.append(f"Teacher's description:\n{description.strip()}")
@@ -150,3 +184,61 @@ def build_user_prompt(title: str, description: str, context: str = "") -> str:
             f"--- existing document ---\n{context.strip()}\n--- end of existing document ---"
         )
     return "\n\n".join(parts)
+
+
+EDIT_SYSTEM = """\
+You are an expert teacher's assistant editing an existing document in a document editor, as the
+teacher asks. You are given the document as numbered blocks ("#0", "#1", ...) and the teacher's
+instruction. Sometimes you are given only the part the teacher selected: then work only on those
+blocks. Reply with the COMPLETE revised version of the blocks you were given, one block per line,
+in order. Do not add a title heading of your own to a partial selection.
+
+Rules for editing:
+- Change only what the instruction asks for. Keep everything else, same wording, same order.
+- To keep a block exactly as it is, reply with {"type":"keep","ref":N} where N is its number.
+  Do this for every block you do not change, and ALWAYS for blocks shown as [kept: ...]
+  (diagrams, images, graphs, circuits, 3D models...: they cannot be rewritten, only kept or
+  removed by leaving them out).
+- To change a block, write the new version as a normal block instead of the keep line.
+- To add material, write new blocks where they belong. To delete, leave the block out.
+- If the instruction asks for a new diagram, chart, graph, table or similar, add it as a new block.
+- Same topic, level and language as the document.
+
+"""
+
+# Only the block types of the format: its "Rules" (start with a title, 40+ blocks) are for
+# writing whole documents and would make an edit balloon.
+_BLOCK_TYPES = BLOCK_FORMAT.split("\nRules:")[0]
+EDIT_RULES = """
+Rules:
+- Text fields are plain text: no markdown (**bold**, #, -) and no $...$ LaTeX. Put formulas in
+  equation blocks.
+- Never put two blocks on one line, and never split one block over several lines.
+- Be accurate: correct formulas, units and balanced chemical equations.
+- Use a circuit, molecule or geometry block only if the document is really about it.
+- Keep the language of the document.
+"""
+EDIT_SYSTEM = EDIT_SYSTEM + _BLOCK_TYPES + EDIT_RULES
+
+
+
+HTML_SYSTEM = """\
+You write one small interactive teaching widget for a document editor, as a single self-contained HTML page.
+
+Output ONLY the HTML, no explanation and no code fences.
+
+Rules:
+- One page: inline <style> and <script>, plain JavaScript. No external files, no CDN, no network calls
+  (fetch, XMLHttpRequest, WebSocket), no iframes, no cookies or localStorage.
+- Under 8000 characters. Keep it simple and robust: it must work the first time.
+- The page sits inside a document column about 700px wide and is sized to its content. Do not use vh units
+  or fixed page heights, and do not add your own page background.
+- Use the theme colours with fallbacks so it fits light and dark: var(--c-text, #1a1a1a), var(--c-surface, #fff),
+  var(--c-border, #e8e8e6), var(--c-accent, #6e62c8), var(--c-accent-bg, #f0eeff), var(--c-success, #16a34a),
+  var(--c-danger, #dc2626).
+- Work by mouse and keyboard, with real <button>s and labels. Do not use alert, confirm or prompt.
+- It must teach something real about what the teacher asked. Show the result clearly (a number, a drawing, a message).
+- If the teacher gives you existing code, change only what they ask and return the whole page again.
+- You may report what a student does with: window.tnb && tnb.emit("answer", { question: "...", correct: true }).
+  Call it when a student answers, submits or finishes (a short name and a small object), nothing else.
+"""

@@ -11,6 +11,12 @@ graphs, callouts...) fits almost any subject and is not filtered.
 import re
 
 _SUBJECTS = {
+    # Interactive HTML is only added when the teacher asked for something interactive.
+    "html": re.compile(
+        r"\b(interactive|interactivity|simulat\w*|activit(y|ies)|game\w*|drag\w*|poll\w*|slider\w*|widget\w*|"
+        r"demo\w*|animat\w*|puzzle\w*|calculator\w*|explor\w*|html|hands-on|playground)\b",
+        re.I,
+    ),
     "circuit": re.compile(
         r"\b(electric\w*|circuit\w*|voltage|volt|volts|resistor\w*|ohm\w*|batter(y|ies)|capacitor\w*|"
         r"inductor\w*|ampere\w*|ammeter|voltmeter)\b",
