@@ -95,9 +95,41 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
     (node, d) => { if (node instanceof MermaidNode) node.setCode(d.code) },
   )
   const { ref: viewRef, near } = useNearViewport()
-  const { svg, error, busy } = useDiagram(data.code, near || editing)
+
+  // The textarea's own value while typing: writing every keystroke straight
+  // through to Lexical (change -> editor.update) forces a second, slightly
+  // later re-render of this component from the node's data, and committing a
+  // new .value to the <textarea> during THAT render — even to the same
+  // string — resets the browser's own cursor to the end, one render behind
+  // what was actually typed (worse under fast/automated typing, which can
+  // drop characters as the two updates race). Typing instead stays purely
+  // local — a plain controlled input, no cursor issue — and is written to
+  // Lexical only after a short pause, the same debounce HtmlNode already
+  // uses for its own live preview.
+  const [liveCode, setLiveCode] = useState(data.code)
+  useEffect(() => { setLiveCode(data.code) }, [data.code])
+  useEffect(() => {
+    if (liveCode === data.code) return
+    const t = setTimeout(() => change({ code: liveCode }), 300)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveCode])
+  // Flush right away on leaving edit mode (Done / click outside / Save),
+  // instead of leaving the last keystroke or two riding on the debounce above.
+  useEffect(() => {
+    if (editing) return
+    if (liveCode !== data.code) change({ code: liveCode })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
+  const { svg, error, busy } = useDiagram(liveCode, near || editing)
   const boxRef = useRef<HTMLDivElement>(null)
   useFitDiagram(boxRef, svg, editing)
+
+  function pickTemplate(templateCode: string) {
+    setLiveCode(templateCode)
+    change({ code: templateCode })
+  }
 
   return (
     <div
@@ -127,7 +159,7 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
         <div className="mm-editor">
           <div className="mm-chips">
             {MERMAID_TEMPLATES.map(t => (
-              <button key={t.label} type="button" className="mm-chip" onClick={() => change({ code: t.code })}>{t.label}</button>
+              <button key={t.label} type="button" className="mm-chip" onClick={() => pickTemplate(t.code)}>{t.label}</button>
             ))}
           </div>
           <div className="hc">
@@ -136,17 +168,17 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
               className="mm-input"
               spellCheck={false}
               autoFocus
-              value={data.code}
+              value={liveCode}
               maxLength={MAX_CODE}
-              rows={Math.min(Math.max(data.code.split('\n').length, 6), 18)}
-              onChange={e => change({ code: e.target.value })}
+              rows={Math.min(Math.max(liveCode.split('\n').length, 6), 18)}
+              onChange={e => setLiveCode(e.target.value)}
               onKeyDown={e => {
                 e.stopPropagation()
                 if (e.key === 'Tab') { // indent instead of leaving the box
                   e.preventDefault()
                   const t = e.currentTarget
                   t.setRangeText('  ', t.selectionStart, t.selectionEnd, 'end')
-                  change({ code: t.value })
+                  setLiveCode(t.value)
                 }
               }}
             />
