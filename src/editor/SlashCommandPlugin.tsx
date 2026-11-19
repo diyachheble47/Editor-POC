@@ -18,8 +18,10 @@ import {
   mergeRegister,
 } from 'lexical'
 import { useEditorUI } from './context/EditorUIContext'
+import { useDocument } from '../context/DocumentContext'
 import { AgentFlyout } from './AgentFlyout'
 import type { FlyoutKind } from './AgentFlyout'
+import { generateBlockAtAnchor } from './ai/generateBlock'
 
 // Block keys whose slash-menu row opens AgentFlyout beside the list instead
 // of inserting anything itself — "Agent" (all three rows) and "Generate"
@@ -29,6 +31,7 @@ import {
   BLOCK_REGISTRY,
   CATEGORY_ORDER,
   CATEGORY_LABELS,
+  $getRealTopLevelAncestor,
   type BlockDef,
 } from './blockRegistry'
 
@@ -119,9 +122,14 @@ export function SlashCommandPlugin() {
   const [queryString, setQueryString] = useState<string | null>(null)
   const queryStringRef = useRef<string | null>(null)
   const { update: updateUI } = useEditorUI()
+  const { setAiState, aiAbortRef } = useDocument()
   // "AI Agent" opens a submenu beside the list. Run from there is remembered here
   // so the normal select path can remove the typed "/agent" before starting it.
-  const pendingRunRef = useRef<{ kind: FlyoutKind; prompt: string; allowEmpty?: boolean; singleBlock?: boolean } | null>(null)
+  const pendingRunRef = useRef<{ kind: FlyoutKind; prompt: string } | null>(null)
+  // "Generate" (same submenu, see FLYOUT_KEYS): not routed through the AI
+  // Agent panel at all — see generateBlockAtAnchor for why — so it's
+  // remembered separately from the three sentence rows above.
+  const pendingGenerateRef = useRef<{ label: string; topic: string } | null>(null)
   const focusFlyoutRef = useRef<(() => void) | null>(null)
   // The submenu opens only when the user goes to "Agent" (hover, or arrow keys),
   // never just because it is the first item of a freshly opened menu.
@@ -266,14 +274,23 @@ export function SlashCommandPlugin() {
 
       // "Agent" and "Generate" are submenus: choosing one (Enter / click) moves
       // into its first blank. Only Run from the submenu goes on to remove the
-      // typed "/agent" or "/generate" and start it.
-      const run = FLYOUT_KEYS.has(block.key) ? pendingRunRef.current : null
+      // typed "/agent" or "/generate" and start it. They're remembered in
+      // separate refs — "Agent" goes to the AI Agent panel, "Generate" is
+      // handled directly right here (see generateBlockAtAnchor) — but both
+      // need the same "nothing pending yet → open the flyout" fallback.
+      const run = block.key === 'agent' ? pendingRunRef.current : null
+      const generate = block.key === 'ai-generate' ? pendingGenerateRef.current : null
       if (FLYOUT_KEYS.has(block.key)) {
-        if (!run) { setFlyoutOpen(true); requestAnimationFrame(() => focusFlyoutRef.current?.()); return }
+        if (!run && !generate) { setFlyoutOpen(true); requestAnimationFrame(() => focusFlyoutRef.current?.()); return }
         pendingRunRef.current = null
+        pendingGenerateRef.current = null
       }
 
       setGhost(null)
+      // Captured while removing "/generate …" below, since that's the exact
+      // spot the generated block must come back to once the AI responds —
+      // not wherever the selection happens to be by then.
+      let generateAnchorKey: string | null = null
       // This callback already runs inside the typeahead's own editor.update, so
       // the "/query" is removed right here. Wrapping it in another editor.update
       // would only queue it until after this one finishes — and blocks that
@@ -304,15 +321,24 @@ export function SlashCommandPlugin() {
             }
           }
         }
+        if (generate) {
+          const sel2 = $getSelection()
+          const topLevel = $isRangeSelection(sel2) ? $getRealTopLevelAncestor(sel2.anchor.getNode()) : null
+          generateAnchorKey = topLevel?.getKey() ?? null
+        }
         closeMenu()
       }
       if (run) {
         updateUI({ agent: { id: Date.now(), run }, activeMath: null, activeModel3d: null })
         return
       }
+      if (generate) {
+        if (generateAnchorKey) void generateBlockAtAnchor(editor, generateAnchorKey, generate.label, generate.topic, { setAiState, aiAbortRef })
+        return
+      }
       block.insert(editor)
     },
-    [editor, updateUI],
+    [editor, updateUI, setAiState, aiAbortRef],
   )
 
   return (
@@ -422,10 +448,13 @@ export function SlashCommandPlugin() {
               focusRef={focusFlyoutRef}
               onBack={() => editor.focus()}
               onRun={(kind, prompt) => {
-                // Only "Generate" ever runs as 'edit' from here — the three
-                // "Agent" sentences never do — so this is safe to key off kind.
-                pendingRunRef.current = { kind, prompt, allowEmpty: kind === 'edit', singleBlock: kind === 'edit' }
-                // Focus is in a blank; bring the editor's selection back so the typed "/agent"/"/generate" can be removed.
+                pendingRunRef.current = { kind, prompt }
+                // Focus is in a blank; bring the editor's selection back so the typed "/agent" can be removed.
+                editor.focus(() => selectOptionAndCleanUp(flyoutOption))
+              }}
+              onGenerate={(label, topic) => {
+                pendingGenerateRef.current = { label, topic }
+                // Focus is in a blank; bring the editor's selection back so the typed "/generate" can be removed.
                 editor.focus(() => selectOptionAndCleanUp(flyoutOption))
               }}
             />

@@ -31,7 +31,7 @@ export interface BlockDef {
 // node.getParent(), unaffected by shadow-root semantics) all the way up to
 // whatever is an actual direct child of $getRoot(), however many shadow-root
 // boundaries (table cells, …) sit in between.
-function $getRealTopLevelAncestor(node: import('lexical').LexicalNode): ElementNode | null {
+export function $getRealTopLevelAncestor(node: import('lexical').LexicalNode): ElementNode | null {
   let current: import('lexical').LexicalNode | null = node
   while (current) {
     if (current.getKey() === 'root') return null

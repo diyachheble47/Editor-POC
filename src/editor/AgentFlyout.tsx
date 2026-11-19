@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MutableRefObject, ReactNode } from 'react'
 
-export type FlyoutKind = 'workbook' | 'lesson' | 'lesson_plan' | 'edit'
+export type FlyoutKind = 'workbook' | 'lesson' | 'lesson_plan'
 type RowId = 'workbook' | 'lesson' | 'lesson_plan'
 
 // Each row reads as a sentence with a blank to fill in: "Create a Workbook for ______".
@@ -31,21 +31,22 @@ const WIDTH = 440
  * The submenu that opens beside the slash menu's "Agent" and "Generate"
  * items.
  *
- * "Agent" shows the three fill-in-the-blank sentence rows below. "Generate"
- * (`rows={['generate']}`) shows a single different row instead: a block-type
- * dropdown + a topic blank. Unlike the sentence rows (which all run through
- * `AiKind: 'lesson'|'workbook'|'lesson_plan'`, a full document-generation
- * pass), Generate always runs as `'edit'` — the same "add/change specific
- * blocks, keep the rest" pipeline the AI Agent panel's own Edit mode uses —
- * with an instruction built here that pins it to inserting exactly one block
- * of the chosen type, nothing else.
+ * "Agent" shows the three fill-in-the-blank sentence rows below, each
+ * running the full AI Agent panel (`onRun`) — a whole-document generation
+ * pass with its own preview/Accept step. "Generate" (`rows={['generate']}`)
+ * shows a single different row instead: a block-type dropdown + a topic
+ * blank, which does NOT go through that panel at all — `onGenerate` inserts
+ * just that one block directly where the cursor was, immediately, no
+ * document rewrite and no preview step. See src/editor/ai/generateBlock.ts
+ * for why these two need genuinely different plumbing, not just a kind flag.
  */
 export function AgentFlyout({
-  rows, onRun, onBack, focusRef,
+  rows, onRun, onGenerate, onBack, focusRef,
 }: {
   /** Which rows to show, and in what order. Defaults to all three "Agent" rows. */
   rows?: (RowId | 'generate')[]
   onRun: (kind: FlyoutKind, prompt: string) => void
+  onGenerate: (blockLabel: string, topic: string) => void
   onBack: () => void
   focusRef: MutableRefObject<(() => void) | null>
 }) {
@@ -76,7 +77,7 @@ export function AgentFlyout({
     const topic = genTopic.trim()
     if (!topic) return
     const label = GENERATE_TYPES.find(t => t.value === genType)?.label ?? genType
-    onRun('edit', `Add ONE new ${label} block about: ${topic}. Nothing else: do not add a heading, title, intro text, or any other block, and do not change or remove any existing block — keep every one of them exactly as it is, word for word.`)
+    onGenerate(label, topic)
   }
 
   return (

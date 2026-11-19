@@ -135,18 +135,12 @@ function circuitFrom(block: Extract<AiBlock, { type: 'circuit' }>): CircuitNode 
   return new CircuitNode(parts, wires)
 }
 
-/**
- * Builds AI-generated blocks at the end of the editor as events arrive:
- * headings and paragraphs are opened empty and typed into, the rest
- * (lists, equations, callouts) appear whole. The server has already
- * checked every block; anything that still can't be created is skipped.
- */
-export function createAiStreamBuilder(editor: LexicalEditor) {
-  let openKey: NodeKey | null = null
-  let skipped = 0
-
-  function $create(block: AiBlock): LexicalNode {
-    switch (block.type) {
+/** Builds the one Lexical node for an AI block — no document position
+ * knowledge of its own, just "here is this block's content as a node".
+ * Shared by the whole-document stream builder below and by a single
+ * generated block inserted directly at the cursor (src/editor/ai/generateBlock.ts). */
+export function $createNodeFromAiBlock(block: AiBlock): LexicalNode {
+  switch (block.type) {
       case 'heading': return $createHeadingNode(`h${block.level}`)
       case 'paragraph': return $createParagraphNode()
       case 'list': {
@@ -194,12 +188,22 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
         if (!molecule) throw new Error(`unknown molecule ${block.name}`)
         return new MoleculeNode(molecule.atoms, molecule.bonds)
       }
-      case 'keep': throw new Error('keep blocks are handled by the caller') // edit mode rebuilds the original instead
-      case 'circuit': return circuitFrom(block)
-      case 'flowchart': return $createMermaidNode(block.code)
-      case 'chart': return $createMermaidNode(block.code)
-    }
+    case 'keep': throw new Error('keep blocks are handled by the caller') // edit mode rebuilds the original instead
+    case 'circuit': return circuitFrom(block)
+    case 'flowchart': return $createMermaidNode(block.code)
+    case 'chart': return $createMermaidNode(block.code)
   }
+}
+
+/**
+ * Builds AI-generated blocks at the end of the editor as events arrive:
+ * headings and paragraphs are opened empty and typed into, the rest
+ * (lists, equations, callouts) appear whole. The server has already
+ * checked every block; anything that still can't be created is skipped.
+ */
+export function createAiStreamBuilder(editor: LexicalEditor) {
+  let openKey: NodeKey | null = null
+  let skipped = 0
 
   return {
     get skipped() { return skipped },
@@ -213,7 +217,7 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
             if ($isElementNode(parent)) parent.append($createTextNode(event.text))
             return
           }
-          const node = $create(event.block)
+          const node = $createNodeFromAiBlock(event.block)
           $getRoot().append(node)
           openKey = event.t === 'open' ? node.getKey() : null
         } catch {
