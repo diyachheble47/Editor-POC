@@ -40,12 +40,11 @@ The allowed blocks are exactly these:
       ethanol "CCO", acetic acid "CC(=O)O", benzene "c1ccccc1", benzoyl peroxide
       "O=C(c1ccccc1)OOC(=O)c1ccccc1", glucose "OCC1OC(O)C(O)C(O)C1O"). Must be valid SMILES, under 100 chars.
       (The older {"type":"molecule","name":"ethanol"} also works for simple ones.)
-{"type":"flowchart","nodes":[{"id":"s","kind":"start","text":"Start"},{"id":"d","kind":"decision","text":"Is it raining?"},
- {"id":"a","kind":"process","text":"Take umbrella"},{"id":"e","kind":"end","text":"End"}],
- "edges":[["s","d"],["d","a","Yes"],["d","e","No"],["a","e"]]}
-      a flowchart for a process, algorithm or decision. kinds: start, end, process, decision, io (input or
-      output). The FIRST node is the entry. edges are [from, to] or [from, to, "Yes"/"No" label]; a decision
-      has exactly two labelled outgoing edges. Keep text short (under 8 words). 4-12 nodes.
+{"type":"flowchart","code":"flowchart TD\\n  A[Start] --> B{Is it raining?}\\n  B -- Yes --> C[Take umbrella]\\n  B -- No --> D[Go outside]\\n  C --> E[End]\\n  D --> E"}
+      a diagram for a process, algorithm or decision, written as Mermaid text (code). Use flowchart
+      syntax by default; sequenceDiagram/classDiagram/stateDiagram-v2/erDiagram/gantt/pie/mindmap are
+      also fine when they fit better. Keep node text short (under 8 words), 4-12 nodes/steps. Plain
+      Mermaid syntax only — no markdown fences, no HTML, no styling/class directives.
 {"type":"chart","chartType":"bar","title":"Marks by subject","labels":["Maths","Science","English"],
  "series":[{"name":"Class A","values":[72,65,80]},{"name":"Class B","values":[68,74,77]}]}
       a bar, line or pie chart (chartType). 2-12 labels, up to 4 series (pie uses only the first

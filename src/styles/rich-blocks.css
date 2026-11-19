@@ -208,3 +208,28 @@
 .html-view:hover .html-edit-pill, .html-edit-pill:focus-visible { opacity: 1; }
 .html-done { background: var(--c-accent); color: #fff; }
 .html-done:hover { background: var(--c-accent-hover); color: #fff; }
+
+/* ── Mermaid block ─────────────────────────────────────────── */
+.mm-block { margin: 8px 0; border-radius: 12px; border: 1px solid transparent; }
+.mm-block:hover, .mm-editing { border-color: var(--c-border); }
+.mm-view { padding: 14px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.mm-editing .mm-view { cursor: default; }
+.mm-svg { max-width: 100%; overflow-x: auto; }
+.mm-svg svg { max-width: 100%; height: auto; }
+.mm-empty { color: var(--c-text-3); font-size: 13px; padding: 20px 0; }
+.mm-error {
+  width: 100%; white-space: pre-wrap; font: 12px var(--font-mono); color: var(--c-danger);
+  background: color-mix(in srgb, var(--c-danger) 8%, transparent); border-radius: 8px; padding: 8px 10px;
+}
+.mm-editor { padding: 0 14px 14px; }
+.mm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.mm-chip {
+  padding: 3px 11px; font-size: 12px; cursor: pointer; border-radius: 999px;
+  border: 1px solid var(--c-border); background: var(--c-surface, var(--c-ground)); color: var(--c-text-2, var(--c-text));
+}
+.mm-chip:hover { border-color: var(--c-accent); color: var(--c-accent); }
+.mm-input {
+  display: block; width: 100%; box-sizing: border-box; resize: vertical; border: none; outline: none;
+  padding: 12px 16px; background: #1e1f27; color: #f8f8f2; tab-size: 2; white-space: pre;
+  font: 13px/1.7 var(--font-mono);
+}

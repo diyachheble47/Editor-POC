@@ -186,7 +186,7 @@ export type AiBlock =
   | { type: 'graph'; functions: string[]; points: [number, number][]; connect: boolean }
   | { type: 'geometry'; polygons: [number, number][][]; segments: [number, number][][] }
   | { type: 'molecule'; name?: string; smiles?: string }
-  | { type: 'flowchart'; nodes: { id: string; kind: 'start' | 'end' | 'process' | 'decision' | 'io'; text: string }[]; edges: [string, string, string?][] }
+  | { type: 'flowchart'; code: string }
   | { type: 'chart'; chartType: 'bar' | 'line' | 'pie'; title: string; labels: string[]; series: { name: string; values: number[] }[] }
   | { type: 'circuit'; parts: { id: string; type: string; value?: string; closed?: boolean }[]; wires: [string, string][] }
 

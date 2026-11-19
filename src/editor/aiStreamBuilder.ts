@@ -23,7 +23,7 @@ import type { GeoEdge } from './nodes/geometry/GeometryNode'
 import { MoleculeNode } from './nodes/molecule/MoleculeNode'
 import { CircuitNode } from './nodes/circuit/CircuitNode'
 import { ChartNode } from './nodes/chart/ChartNode'
-import { FlowchartNode, buildFlowchart } from './nodes/flowchart/FlowchartNode'
+import { $createMermaidNode } from './nodes/mermaid/MermaidNode'
 import type { CircuitPart, CircuitWire } from './nodes/circuit/CircuitNode'
 import { defaultValue } from './nodes/circuit/symbols'
 import type { PartType } from './nodes/circuit/symbols'
@@ -197,10 +197,7 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
       }
       case 'keep': throw new Error('keep blocks are handled by the caller') // edit mode rebuilds the original instead
       case 'circuit': return circuitFrom(block)
-      case 'flowchart': {
-        const g = buildFlowchart(block.nodes, block.edges)
-        return new FlowchartNode(g.steps, g.arrows)
-      }
+      case 'flowchart': return $createMermaidNode(block.code)
       case 'chart': return new ChartNode({ title: block.title, chartType: block.chartType, labels: block.labels, series: block.series })
     }
   }

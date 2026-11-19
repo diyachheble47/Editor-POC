@@ -70,10 +70,10 @@ function sampleFps(ms = 1000): Promise<number> {
   })
 }
 
-// Blocks that cost real memory/GPU when alive: 3D model, graph, circuit, flowchart, drawing.
-const HEAVY = '.model3d-block, .graph-block, .circuit-block, .flow-block, [class*="excalidraw"]'
+// Blocks that cost real memory/GPU when alive: 3D model, graph, circuit, flowchart/diagram, drawing.
+const HEAVY = '.model3d-block, .graph-block, .circuit-block, .mm-block, [class*="excalidraw"]'
 // What exists inside a heavy block once its library has loaded and drawn it.
-const LOADED = 'canvas, .jxgbox svg, .react-flow'
+const LOADED = 'canvas, .jxgbox svg, .react-flow, .mm-svg svg'
 
 /** Counts the document's top-level blocks: all, heavy, in the viewport, and loaded. */
 function scanBlocks(root: Element | null) {

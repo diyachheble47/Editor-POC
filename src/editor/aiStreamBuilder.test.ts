@@ -11,7 +11,7 @@ import { MoleculeNode } from './nodes/molecule/MoleculeNode'
 import { CircuitNode } from './nodes/circuit/CircuitNode'
 import { ChartNode } from './nodes/chart/ChartNode'
 import { MathNode } from './nodes/math/MathNode'
-import { FlowchartNode } from './nodes/flowchart/FlowchartNode'
+import { MermaidNode } from './nodes/mermaid/MermaidNode'
 import { ListItemNode, ListNode } from '@lexical/list'
 import { EquationNode } from './nodes/EquationNode'
 import { CalloutNode } from './nodes/callout'
@@ -23,7 +23,7 @@ function run(events: AiEvent[], finish = false) {
     nodes: [
       HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, HorizontalRuleNode, EquationNode, CalloutNode,
       TableNode, TableRowNode, TableCellNode, SpreadsheetNode, GraphNode, GeometryNode, MoleculeNode, CircuitNode,
-      ChartNode, FlowchartNode, MathNode,
+      ChartNode, MermaidNode, MathNode,
     ],
     onError: e => { throw e },
   })
@@ -33,7 +33,7 @@ function run(events: AiEvent[], finish = false) {
   const blocks = editor.getEditorState().read(() =>
     $getRoot().getChildren().map(c => ({ type: c.getType(), text: c.getTextContent() })),
   )
-  return { blocks, skipped: builder.skipped }
+  return { blocks, skipped: builder.skipped, editor }
 }
 
 describe('createAiStreamBuilder', () => {
@@ -118,23 +118,15 @@ describe('createAiStreamBuilder', () => {
     expect(node.__wires.every(w => at[w.source] && at[w.target])).toBe(true)
   })
 
-  it('builds a chart and a flowchart', () => {
-    const { blocks, skipped } = run([
+  it('builds a chart and a flowchart (a Mermaid block)', () => {
+    const { blocks, skipped, editor } = run([
       { t: 'block', block: { type: 'chart', chartType: 'pie', title: 'Share', labels: ['a', 'b'], series: [{ name: 's', values: [1, 3] }] } },
-      {
-        t: 'block',
-        block: {
-          type: 'flowchart',
-          nodes: [
-            { id: 's', kind: 'start', text: 'Start' }, { id: 'd', kind: 'decision', text: 'Ok?' },
-            { id: 'a', kind: 'process', text: 'Do it' }, { id: 'e', kind: 'end', text: 'End' },
-          ],
-          edges: [['s', 'd'], ['d', 'a', 'Yes'], ['d', 'e', 'No'], ['a', 'e']],
-        },
-      },
+      { t: 'block', block: { type: 'flowchart', code: 'flowchart TD\n  A[Start] --> B{Ok?}\n  B -- Yes --> C[Do it]\n  B -- No --> D[End]' } },
     ])
     expect(skipped).toBe(0)
-    expect(blocks.map(b => b.type)).toEqual(['chart', 'flowchart'])
+    expect(blocks.map(b => b.type)).toEqual(['chart', 'mermaid'])
+    const node = editor.getEditorState().read(() => $getRoot().getChildren().find(n => n instanceof MermaidNode)) as MermaidNode
+    expect(node.__code).toContain('flowchart TD')
   })
 
   it('puts a maths formula in a Math block and a reaction in a chemical equation', () => {

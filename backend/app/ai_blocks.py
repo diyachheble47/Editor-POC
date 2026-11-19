@@ -98,35 +98,24 @@ def _grid(raw: object, max_rows: int, max_cols: int, cell_limit: int) -> Optiona
     return [r + [""] * (width - len(r)) for r in rows]
 
 
-FLOW_KINDS = {"start", "end", "process", "decision", "io"}
-MAX_FLOW_NODES = 14
-
-
 _SMILES = re.compile(r"^[A-Za-z0-9@+\-\[\]\(\)=#:/\\.%]{1,150}$")
+
+MAX_MERMAID = 4000
+# Mermaid itself runs with securityLevel "strict" on the frontend (scripts/click
+# handlers stripped), so this only turns away the obvious attempt to break out of
+# that — real text, no markup or script-ish content.
+_UNSAFE_MERMAID = re.compile(r"<\s*script|javascript:|on\w+\s*=|<\s*iframe", re.I)
+_MERMAID_FENCE = re.compile(r"^```(?:mermaid)?\s*|\s*```$", re.I)
 
 
 def _sanitize_flowchart(raw: dict) -> Optional[dict]:
-    nodes_raw, edges_raw = raw.get("nodes"), raw.get("edges")
-    if not isinstance(nodes_raw, list) or not isinstance(edges_raw, list):
+    code = raw.get("code")
+    if not isinstance(code, str):
         return None
-    nodes, seen = [], set()
-    for n in nodes_raw[:MAX_FLOW_NODES]:
-        if not isinstance(n, dict) or n.get("kind") not in FLOW_KINDS:
-            continue
-        nid, text = n.get("id"), _text(n.get("text"), 60)
-        if not isinstance(nid, str) or not _PART_ID.match(nid) or nid in seen or not text:
-            continue
-        seen.add(nid)
-        nodes.append({"id": nid, "kind": n["kind"], "text": text})
-    edges = []
-    for e in edges_raw[:40]:
-        if isinstance(e, list) and len(e) in (2, 3) and e[0] in seen and e[1] in seen and e[0] != e[1]:
-            edge = [e[0], e[1]]
-            label = _text(e[2], 20) if len(e) == 3 else None
-            if label:
-                edge.append(label)
-            edges.append(edge)
-    return {"type": "flowchart", "nodes": nodes, "edges": edges} if len(nodes) >= 2 and edges else None
+    code = _MERMAID_FENCE.sub("", code.strip()).strip()
+    if not code or len(code) > MAX_MERMAID or _UNSAFE_MERMAID.search(code):
+        return None
+    return {"type": "flowchart", "code": code}
 
 
 def _sanitize_chart(raw: dict) -> Optional[dict]:

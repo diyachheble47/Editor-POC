@@ -165,10 +165,10 @@ def test_chart_and_flowchart_blocks_are_cleaned():
     assert chart and len(chart["series"]) == 1  # a pie keeps one series
     assert sanitize_block({"type": "chart", "chartType": "bar", "labels": ["a", "b"],
                            "series": [{"name": "x", "values": [1, "oops"]}]}) is None
-    flow = sanitize_block({"type": "flowchart",
-                           "nodes": [{"id": "s", "kind": "start", "text": "Start"}, {"id": "e", "kind": "end", "text": "End"}],
-                           "edges": [["s", "e", "go"], ["s", "zzz"]]})
-    assert flow and flow["edges"] == [["s", "e", "go"]]
+    flow = sanitize_block({"type": "flowchart", "code": "```mermaid\nflowchart TD\n  A --> B\n```"})
+    assert flow == {"type": "flowchart", "code": "flowchart TD\n  A --> B"}
+    assert sanitize_block({"type": "flowchart", "code": "flowchart TD\n  A --> B\n  <script>alert(1)</script>"}) is None
+    assert sanitize_block({"type": "flowchart", "code": ""}) is None
 
 
 def test_off_topic_visuals_are_dropped_but_on_topic_ones_stay():

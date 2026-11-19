@@ -3068,27 +3068,8 @@
 .chart-x { border: none; background: transparent; color: var(--c-text-3); cursor: pointer; font-size: 15px; }
 .chart-x:hover { color: var(--c-danger); }
 
-/* Flowchart block */
-.flow-block { margin: 10px 0; }
-.flow-canvas { height: 380px; }
-.flow-block:not(.flow-editing) .react-flow__handle { opacity: 0; pointer-events: none; }
-.flow-block:not(.flow-editing) .flow-canvas { cursor: pointer; }
-.flow-step { position: relative; display: flex; align-items: center; justify-content: center; min-width: 120px; max-width: 190px; min-height: 48px; padding: 8px 14px; box-sizing: border-box; background: var(--c-surface); border: 1.5px solid var(--c-text-2); color: var(--c-text); font-size: 13px; text-align: center; }
-.flow-start, .flow-end { border-radius: 999px; background: var(--c-accent-surface, var(--c-surface)); }
-.flow-process { border-radius: 6px; }
-.flow-io { transform: skewX(-14deg); border-radius: 4px; }
-.flow-io > * { transform: skewX(14deg); }
-.flow-decision { min-width: 150px; min-height: 90px; border: none; background: transparent; padding: 14px 26px; }
-.flow-diamond { position: absolute; inset: 0; width: 100%; height: 100%; }
-.flow-diamond polygon { fill: var(--c-surface); stroke: var(--c-text-2); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.flow-step-text, .flow-step-input { position: relative; z-index: 1; }
-.flow-step-input { width: 100%; border: none; border-bottom: 1px dashed var(--c-border); background: transparent; color: inherit; text-align: center; font-size: 13px; outline: none; }
-.flow-label-input { padding: 3px 8px; font-size: 12.5px; border: 1px solid var(--c-border); border-radius: 6px; background: var(--c-ground); color: var(--c-text); }
-.flow-block .react-flow__edge-text { font-size: 11px; fill: var(--c-text); }
-
 /* Placeholders while a lazily loaded block's code downloads (same height as the real block) */
 .circuit-loading { height: 320px; }
-.flow-loading { height: 380px; }
 .model3d-loading { min-height: 240px; }
 .mol-formula-kind { padding: 3px 4px; font-size: 12.5px; border: 1px solid var(--c-border); border-radius: 6px; background: var(--c-ground); color: var(--c-text); }
 
