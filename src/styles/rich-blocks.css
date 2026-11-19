@@ -214,12 +214,18 @@
 .mm-block:hover, .mm-editing { border-color: var(--c-border); }
 .mm-view { padding: 14px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .mm-editing .mm-view { cursor: default; }
-/* Fixed height + scroll while editing, so the diagram growing/shrinking as
-   you type never pushes the text box under the cursor. */
-.mm-view-fixed { min-height: 160px; max-height: 360px; overflow: auto; justify-content: center; }
+/* A fixed (not min/max) height while editing, so the diagram growing or
+   shrinking as you type never pushes the text box under the cursor.
+   .mm-svg sets overflow-x so wide diagrams can scroll sideways in the normal
+   (reading) view; that quietly forces its own overflow-y to "auto" too (a real
+   CSS rule: pairing a non-"visible" x with a "visible" y computes the y side
+   to "auto" as well), so a diagram taller than this fixed box got its own
+   native scrollbar. Overflow is already clipped one level up here, so there's
+   nothing for .mm-svg itself to scroll — turn it off. */
+.mm-view-fixed { height: 240px; overflow: hidden; justify-content: center; }
+.mm-view-fixed .mm-svg { overflow: hidden; }
 .mm-svg { max-width: 100%; overflow-x: auto; }
 .mm-svg svg { max-width: 100%; height: auto; }
-.mm-view-fixed .mm-svg svg { max-height: 330px; }
 .mm-empty { color: var(--c-text-3); font-size: 13px; padding: 20px 0; }
 .mm-error {
   width: 100%; white-space: pre-wrap; font: 12px var(--font-mono); color: var(--c-danger);
