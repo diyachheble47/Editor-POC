@@ -215,14 +215,15 @@
 .mm-view { padding: 14px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .mm-editing .mm-view { cursor: default; }
 /* A fixed (not min/max) height while editing, so the diagram growing or
-   shrinking as you type never pushes the text box under the cursor.
+   shrinking as you type never pushes the text box under the cursor; the
+   diagram itself is shrunk to fit this box in JS (useFitDiagram in
+   MermaidNode.tsx), so nothing is ever cropped, just made smaller.
    .mm-svg sets overflow-x so wide diagrams can scroll sideways in the normal
    (reading) view; that quietly forces its own overflow-y to "auto" too (a real
    CSS rule: pairing a non-"visible" x with a "visible" y computes the y side
-   to "auto" as well), so a diagram taller than this fixed box got its own
-   native scrollbar. Overflow is already clipped one level up here, so there's
-   nothing for .mm-svg itself to scroll — turn it off. */
-.mm-view-fixed { height: 240px; overflow: hidden; justify-content: center; }
+   to "auto" as well) — harmless now that the diagram fits, but turned off
+   here anyway so there's never a stray scrollbar while editing. */
+.mm-view-fixed { height: 280px; overflow: hidden; justify-content: center; }
 .mm-view-fixed .mm-svg { overflow: hidden; }
 .mm-svg { max-width: 100%; overflow-x: auto; }
 .mm-svg svg { max-width: 100%; height: auto; }

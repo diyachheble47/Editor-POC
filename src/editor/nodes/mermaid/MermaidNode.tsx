@@ -4,7 +4,7 @@
 
 import { DecoratorNode } from 'lexical'
 import type { EditorConfig, LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from 'lexical'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useBlockData } from '../_shared/useBlockData'
 import { useTheme } from '../../../context/ThemeContext'
 import { renderMermaid } from './mermaidRender'
@@ -53,6 +53,41 @@ function useNearViewport() {
   return { ref, near }
 }
 
+/**
+ * Shrinks (never crops) the rendered diagram to fit inside a fixed-height box
+ * while editing, so the whole diagram stays visible and the box never resizes
+ * as you type. `max-height`/`overflow` alone can't do this: a percentage
+ * height on an <svg> needs a definite-height ancestor chain, which a flex
+ * item doesn't reliably give it, and mermaid's own inline width/height
+ * attributes would win over a CSS rule anyway. Reading the diagram's real
+ * (viewBox) size and setting pixel width/height directly sidesteps both.
+ */
+function useFitDiagram(boxRef: React.RefObject<HTMLDivElement | null>, svg: string, active: boolean) {
+  useLayoutEffect(() => {
+    const box = boxRef.current
+    const svgEl = box?.querySelector('svg')
+    if (!active || !box || !svgEl) return
+
+    const fit = () => {
+      svgEl.style.width = ''
+      svgEl.style.height = ''
+      const vb = (svgEl as SVGSVGElement).viewBox?.baseVal
+      const natural = svgEl.getBoundingClientRect()
+      const vbW = vb?.width || natural.width
+      const vbH = vb?.height || natural.height
+      if (!vbW || !vbH) return
+      const pad = 28 // .mm-view's 14px padding, both sides
+      const scale = Math.min(1, (box.clientWidth - pad) / vbW, (box.clientHeight - pad) / vbH)
+      svgEl.style.width = `${vbW * scale}px`
+      svgEl.style.height = `${vbH * scale}px`
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [boxRef, svg, active])
+}
+
 function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string }) {
   const { data, change, rootRef, editing, setEditing } = useBlockData<{ code: string }>(
     nodeKey,
@@ -61,6 +96,8 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
   )
   const { ref: viewRef, near } = useNearViewport()
   const { svg, error, busy } = useDiagram(data.code, near || editing)
+  const boxRef = useRef<HTMLDivElement>(null)
+  useFitDiagram(boxRef, svg, editing)
 
   return (
     <div
@@ -71,9 +108,12 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
       {/* Fixed height while editing: the drawing can swing from a one-line
           placeholder to a tall diagram on every keystroke, and letting the
           box grow/shrink with it would shove the text box up and down under
-          the cursor. Reading view (not editing) sizes to the diagram as usual. */}
+          the cursor. The diagram itself is shrunk to fit (useFitDiagram), so
+          it always stays fully visible, never cropped. Reading view (not
+          editing) sizes to the diagram at full size as usual. */}
       <div
         className={`mm-view${editing ? ' mm-view-fixed' : ''}`}
+        ref={boxRef}
         onClick={() => setEditing(true)}
         title={editing ? undefined : 'Click to edit'}
       >
