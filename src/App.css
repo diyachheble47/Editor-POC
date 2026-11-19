@@ -3053,20 +3053,6 @@
 .mol-formula-error { font-size: 12px; color: var(--c-danger); }
 
 /* Chart block */
-.chart-block { margin: 10px 0; padding: 8px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
-.chart-block:hover, .chart-editing { border-color: var(--c-border); }
-.chart-title { text-align: center; font-weight: 600; font-size: 14px; margin-bottom: 4px; color: var(--c-text); }
-.chart-title-input { display: block; width: 100%; box-sizing: border-box; text-align: center; font-weight: 600; font-size: 14px; border: 1px solid var(--c-border); border-radius: 6px; padding: 4px 8px; background: var(--c-ground); color: var(--c-text); margin-bottom: 6px; }
-.chart-svg { display: block; width: 100%; max-width: 640px; margin: 0 auto; }
-.chart-label { font-size: 11px; fill: var(--c-text-2); }
-.chart-grid { stroke: var(--c-border); stroke-width: 1; }
-.chart-axis { stroke: var(--c-text-3); stroke-width: 1.5; }
-.chart-editor { margin-top: 8px; cursor: default; }
-.chart-table { border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
-.chart-table th, .chart-table td { padding: 2px 4px; text-align: left; white-space: nowrap; }
-.chart-table input { width: 96px; padding: 3px 6px; border: 1px solid var(--c-border); border-radius: 5px; background: var(--c-ground); color: var(--c-text); font-size: 12.5px; }
-.chart-x { border: none; background: transparent; color: var(--c-text-3); cursor: pointer; font-size: 15px; }
-.chart-x:hover { color: var(--c-danger); }
 
 /* Placeholders while a lazily loaded block's code downloads (same height as the real block) */
 .circuit-loading { height: 320px; }

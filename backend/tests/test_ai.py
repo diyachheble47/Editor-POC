@@ -159,12 +159,12 @@ def test_sanitize_quote_divider_and_code():
 
 
 def test_chart_and_flowchart_blocks_are_cleaned():
+    # Both are now plain Mermaid text, cleaned the same way.
     from app.ai_blocks import sanitize_block
-    chart = sanitize_block({"type": "chart", "chartType": "pie", "title": "T", "labels": ["a", "b"],
-                            "series": [{"name": "x", "values": [1, 2]}, {"name": "y", "values": [3, 4]}]})
-    assert chart and len(chart["series"]) == 1  # a pie keeps one series
-    assert sanitize_block({"type": "chart", "chartType": "bar", "labels": ["a", "b"],
-                           "series": [{"name": "x", "values": [1, "oops"]}]}) is None
+    chart = sanitize_block({"type": "chart", "code": '```mermaid\npie title T\n  "a" : 1\n  "b" : 2\n```'})
+    assert chart == {"type": "chart", "code": 'pie title T\n  "a" : 1\n  "b" : 2'}
+    assert sanitize_block({"type": "chart", "code": "pie title T\n  <script>alert(1)</script>"}) is None
+    assert sanitize_block({"type": "chart", "code": ""}) is None
     flow = sanitize_block({"type": "flowchart", "code": "```mermaid\nflowchart TD\n  A --> B\n```"})
     assert flow == {"type": "flowchart", "code": "flowchart TD\n  A --> B"}
     assert sanitize_block({"type": "flowchart", "code": "flowchart TD\n  A --> B\n  <script>alert(1)</script>"}) is None

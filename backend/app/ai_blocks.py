@@ -108,35 +108,15 @@ _UNSAFE_MERMAID = re.compile(r"<\s*script|javascript:|on\w+\s*=|<\s*iframe", re.
 _MERMAID_FENCE = re.compile(r"^```(?:mermaid)?\s*|\s*```$", re.I)
 
 
-def _sanitize_flowchart(raw: dict) -> Optional[dict]:
+def _sanitize_mermaid(block_type: str, raw: dict) -> Optional[dict]:
+    """Shared by flowchart and chart: both are now just Mermaid text."""
     code = raw.get("code")
     if not isinstance(code, str):
         return None
     code = _MERMAID_FENCE.sub("", code.strip()).strip()
     if not code or len(code) > MAX_MERMAID or _UNSAFE_MERMAID.search(code):
         return None
-    return {"type": "flowchart", "code": code}
-
-
-def _sanitize_chart(raw: dict) -> Optional[dict]:
-    ctype = raw.get("chartType")
-    labels_raw, series_raw = raw.get("labels"), raw.get("series")
-    if ctype not in ("bar", "line", "pie") or not isinstance(labels_raw, list) or not isinstance(series_raw, list):
-        return None
-    labels = [(_text(l, 30) or "") for l in labels_raw[:12]]
-    series = []
-    for s in series_raw[:4]:
-        if not isinstance(s, dict) or not isinstance(s.get("values"), list):
-            continue
-        values = [_number(v) for v in s["values"][: len(labels)]]
-        if len(labels) < 2 or len(values) != len(labels) or any(v is None for v in values):
-            continue
-        series.append({"name": _text(s.get("name"), 30) or "Series", "values": values})
-    if len(labels) < 2 or not series:
-        return None
-    if ctype == "pie":
-        series = series[:1]
-    return {"type": "chart", "chartType": ctype, "title": _text(raw.get("title"), 80) or "", "labels": labels, "series": series}
+    return {"type": block_type, "code": code}
 
 
 def _sanitize_circuit(raw: dict) -> Optional[dict]:
@@ -318,10 +298,10 @@ def sanitize_block(raw: object) -> Optional[dict]:
         return _sanitize_circuit(raw)
 
     if kind == "chart":
-        return _sanitize_chart(raw)
+        return _sanitize_mermaid("chart", raw)
 
     if kind == "flowchart":
-        return _sanitize_flowchart(raw)
+        return _sanitize_mermaid("flowchart", raw)
 
     return None
 

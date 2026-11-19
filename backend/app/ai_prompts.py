@@ -45,10 +45,11 @@ The allowed blocks are exactly these:
       syntax by default; sequenceDiagram/classDiagram/stateDiagram-v2/erDiagram/gantt/pie/mindmap are
       also fine when they fit better. Keep node text short (under 8 words), 4-12 nodes/steps. Plain
       Mermaid syntax only — no markdown fences, no HTML, no styling/class directives.
-{"type":"chart","chartType":"bar","title":"Marks by subject","labels":["Maths","Science","English"],
- "series":[{"name":"Class A","values":[72,65,80]},{"name":"Class B","values":[68,74,77]}]}
-      a bar, line or pie chart (chartType). 2-12 labels, up to 4 series (pie uses only the first
-      series). values are plain numbers. Use for statistics, comparisons over time, shares of a whole.
+{"type":"chart","code":"xychart-beta\\n  title \\"Marks by subject\\"\\n  x-axis [Maths, Science, English]\\n  y-axis \\"Marks\\" 0 --> 100\\n  bar [72, 65, 80]"}
+      a bar/line chart (xychart-beta) or a pie chart (pie title \\"T\\"\\n  \\"label\\" : value), written as
+      Mermaid text (code). Use for statistics, comparisons, shares of a whole. xychart-beta supports one
+      bar series and one line series (not several named series side by side) — pick whichever single
+      series matters most, or use two charts. 2-12 x-axis labels.
 {"type":"circuit","parts":[{"id":"b1","type":"battery","value":"9 V"},{"id":"r1","type":"resistor","value":"100 Ω"}],
  "wires":[["b1","r1"],["r1","b1"]]}
       parts have a short unique id and a type: battery, acsource, resistor, capacitor, inductor, diode,

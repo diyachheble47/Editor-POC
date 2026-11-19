@@ -68,8 +68,12 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
       contentEditable={false}
       ref={el => { rootRef.current = el; viewRef.current = el }}
     >
+      {/* Fixed height while editing: the drawing can swing from a one-line
+          placeholder to a tall diagram on every keystroke, and letting the
+          box grow/shrink with it would shove the text box up and down under
+          the cursor. Reading view (not editing) sizes to the diagram as usual. */}
       <div
-        className="mm-view"
+        className={`mm-view${editing ? ' mm-view-fixed' : ''}`}
         onClick={() => setEditing(true)}
         title={editing ? undefined : 'Click to edit'}
       >
@@ -96,7 +100,15 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
               maxLength={MAX_CODE}
               rows={Math.min(Math.max(data.code.split('\n').length, 6), 18)}
               onChange={e => change({ code: e.target.value })}
-              onKeyDown={e => { e.stopPropagation() }}
+              onKeyDown={e => {
+                e.stopPropagation()
+                if (e.key === 'Tab') { // indent instead of leaving the box
+                  e.preventDefault()
+                  const t = e.currentTarget
+                  t.setRangeText('  ', t.selectionStart, t.selectionEnd, 'end')
+                  change({ code: t.value })
+                }
+              }}
             />
           </div>
         </div>

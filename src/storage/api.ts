@@ -187,7 +187,7 @@ export type AiBlock =
   | { type: 'geometry'; polygons: [number, number][][]; segments: [number, number][][] }
   | { type: 'molecule'; name?: string; smiles?: string }
   | { type: 'flowchart'; code: string }
-  | { type: 'chart'; chartType: 'bar' | 'line' | 'pie'; title: string; labels: string[]; series: { name: string; values: number[] }[] }
+  | { type: 'chart'; code: string }
   | { type: 'circuit'; parts: { id: string; type: string; value?: string; closed?: boolean }[]; wires: [string, string][] }
 
 export type AiEvent =

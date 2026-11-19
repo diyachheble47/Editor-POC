@@ -9,7 +9,6 @@ import { GraphNode } from './nodes/graph/GraphNode'
 import { GeometryNode } from './nodes/geometry/GeometryNode'
 import { MoleculeNode } from './nodes/molecule/MoleculeNode'
 import { CircuitNode } from './nodes/circuit/CircuitNode'
-import { ChartNode } from './nodes/chart/ChartNode'
 import { MathNode } from './nodes/math/MathNode'
 import { MermaidNode } from './nodes/mermaid/MermaidNode'
 import { ListItemNode, ListNode } from '@lexical/list'
@@ -23,7 +22,7 @@ function run(events: AiEvent[], finish = false) {
     nodes: [
       HeadingNode, QuoteNode, ListNode, ListItemNode, CodeNode, HorizontalRuleNode, EquationNode, CalloutNode,
       TableNode, TableRowNode, TableCellNode, SpreadsheetNode, GraphNode, GeometryNode, MoleculeNode, CircuitNode,
-      ChartNode, MermaidNode, MathNode,
+      MermaidNode, MathNode,
     ],
     onError: e => { throw e },
   })
@@ -118,15 +117,16 @@ describe('createAiStreamBuilder', () => {
     expect(node.__wires.every(w => at[w.source] && at[w.target])).toBe(true)
   })
 
-  it('builds a chart and a flowchart (a Mermaid block)', () => {
+  it('builds a chart and a flowchart (both Mermaid blocks)', () => {
     const { blocks, skipped, editor } = run([
-      { t: 'block', block: { type: 'chart', chartType: 'pie', title: 'Share', labels: ['a', 'b'], series: [{ name: 's', values: [1, 3] }] } },
+      { t: 'block', block: { type: 'chart', code: 'pie title Share\n  "a" : 1\n  "b" : 3' } },
       { t: 'block', block: { type: 'flowchart', code: 'flowchart TD\n  A[Start] --> B{Ok?}\n  B -- Yes --> C[Do it]\n  B -- No --> D[End]' } },
     ])
     expect(skipped).toBe(0)
-    expect(blocks.map(b => b.type)).toEqual(['chart', 'mermaid'])
-    const node = editor.getEditorState().read(() => $getRoot().getChildren().find(n => n instanceof MermaidNode)) as MermaidNode
-    expect(node.__code).toContain('flowchart TD')
+    expect(blocks.map(b => b.type)).toEqual(['mermaid', 'mermaid'])
+    const codes = editor.getEditorState().read(() => $getRoot().getChildren().filter((n): n is MermaidNode => n instanceof MermaidNode).map(n => n.__code))
+    expect(codes[0]).toContain('pie title')
+    expect(codes[1]).toContain('flowchart TD')
   })
 
   it('puts a maths formula in a Math block and a reaction in a chemical equation', () => {
