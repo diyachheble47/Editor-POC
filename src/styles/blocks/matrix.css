@@ -1,0 +1,92 @@
+/* ================================================================
+   MATRIX BLOCK (a themed Lexical table — see theme.table in EditorConfig.ts)
+   ================================================================ */
+
+.matrix-table {
+  position: relative;
+  border-collapse: collapse;
+  margin: 10px auto;
+}
+
+/* Square-bracket matrix styling instead of plain table gridlines */
+.matrix-table::before,
+.matrix-table::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 9px;
+  border: 2px solid var(--c-text-2);
+  pointer-events: none;
+}
+
+.matrix-table::before { left: -9px; border-right: none; }
+.matrix-table::after { right: -9px; border-left: none; }
+
+.matrix-cell {
+  border: none;
+  padding: 6px 14px;
+  min-width: 32px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.matrix-cell p { margin: 0; }
+
+/* Size picker (hover grid) shown on inserting a Matrix block */
+.matrix-picker {
+  position: fixed;
+  z-index: 10000;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md, 8px);
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.matrix-picker-grid { display: flex; flex-direction: column; gap: 3px; }
+.matrix-picker-row { display: flex; gap: 3px; }
+
+.matrix-picker-cell {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid var(--c-border);
+  background: var(--c-ground);
+  cursor: pointer;
+  transition: background 0.08s, border-color 0.08s;
+}
+
+.matrix-picker-cell.filled { background: var(--c-accent); border-color: var(--c-accent); }
+
+.matrix-picker-label {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--c-text-2);
+  text-align: center;
+}
+
+/* +/- row/column controls shown while the cursor is inside a matrix */
+.matrix-controls {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.matrix-controls button {
+  font-size: 11px;
+  font-family: var(--font-ui);
+  padding: 3px 8px;
+  border-radius: var(--r-sm, 4px);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+
+.matrix-controls button:hover { background: var(--c-surface-hover); color: var(--c-text); }
+

@@ -1,0 +1,105 @@
+/* ================================================================
+   DOCUMENT PREVIEW
+   ================================================================ */
+
+.preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-ground);
+}
+
+.preview-overlay-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  flex-shrink: 0;
+}
+
+.preview-overlay-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+  background: var(--c-surface-active);
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
+  flex-shrink: 0;
+}
+
+.preview-overlay-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text);
+  font-family: var(--font-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-overlay-close {
+  padding: 6px 18px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--c-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast);
+}
+.preview-overlay-close:hover { background: var(--c-accent-hover); }
+
+.preview-overlay-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.preview-overlay-page {
+  width: 100%;
+  max-width: 900px;
+  padding: 48px 72px 120px;
+  box-sizing: border-box;
+  /* SectionCardsPlugin portals its background cards into this element
+     (the Lexical root's DOM parent, same as .editor-shell in the real
+     editor) and positions them with `position: absolute; top: Npx`
+     relative to it — without this, they position against whatever
+     ancestor happens to be positioned instead, landing as a stray,
+     misaligned strip. */
+  position: relative;
+}
+
+.preview-overlay-doc-title {
+  font-size: clamp(26px, 3.5vw, 36px);
+  font-weight: 700;
+  color: var(--c-text);
+  margin: 0 0 28px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  font-family: var(--font-ui);
+}
+
+/* The preview is look-but-don't-touch: several blocks (Mermaid's
+   click-to-edit, ResizeFrame's drag handles, spreadsheet cells, …) listen
+   for pointer events on themselves regardless of the Lexical editor's own
+   `editable` flag, so that flag alone can't make them inert. */
+.preview-overlay-input {
+  pointer-events: none;
+  min-height: 0;
+  caret-color: transparent;
+}
+

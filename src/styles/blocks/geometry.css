@@ -1,0 +1,54 @@
+/* ================================================================
+   GEOMETRY BLOCK (points, segments, lines, rays, angles, polygons)
+   — reuses .graph-toolbar/.graph-mode-btn/.graph-svg/.graph-gridline/
+   .graph-axis/.graph-point/.graph-point-label/.graph-toolbar-hint from
+   the Graph block above; only geometry-specific marks are defined here.
+   ================================================================ */
+
+.geo-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.geo-finish-btn {
+  background: var(--c-accent);
+  color: #fff;
+  border-color: var(--c-accent);
+}
+
+.geo-edge {
+  stroke: var(--c-text-2);
+  stroke-width: 2;
+}
+
+.geo-edge-line { stroke-dasharray: none; opacity: 0.8; }
+.geo-edge-ray { stroke-dasharray: none; }
+
+.geo-angle-arc {
+  fill: none;
+  stroke: var(--c-accent);
+  stroke-width: 1.5;
+}
+
+.geo-angle-label {
+  font-size: 10px;
+  fill: var(--c-accent);
+  font-family: var(--font-mono, monospace);
+}
+
+.geo-polygon {
+  fill: var(--c-accent);
+  fill-opacity: 0.12;
+  stroke: var(--c-accent);
+  stroke-width: 1.5;
+}
+
+.geo-poly-preview {
+  fill: none;
+  stroke: var(--c-text-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+

@@ -4,6 +4,7 @@ import { useEditorUI } from '../editor/context/EditorUIContext'
 import { useEditorFormat } from '../editor/context/EditorFormatContext'
 import { useDocument, formatRelativeTime } from '../context/DocumentContext'
 import { useTheme } from '../context/ThemeContext'
+import { PreviewModal } from './PreviewModal'
 
 interface TopBarProps {
   leftOpen: boolean
@@ -27,6 +28,7 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
   const { canUndo, canRedo } = useEditorFormat()
   const { title, saveStatus, saveError, save, lastSaved, wordCount, aiState, stopAi, docLoading } = useDocument()
   const aiSeconds = useElapsedSeconds(aiState.status === 'generating' ? aiState.startedAt : undefined)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const saveLabel =
     saveStatus === 'saving'  ? 'Saving…' :
@@ -83,6 +85,17 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
         {saveError && (
           <span className="topbar-sync-status conflict" role="alert">{saveError}</span>
         )}
+
+        <button
+          type="button"
+          className="icon-btn"
+          disabled={!editor || docLoading}
+          onClick={() => setPreviewOpen(true)}
+          title="Preview document"
+          aria-label="Preview document"
+        >
+          <PreviewIcon />
+        </button>
 
         <button
           type="button"
@@ -147,6 +160,10 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
           Share
         </button>
       </div>
+
+      {previewOpen && editor && (
+        <PreviewModal sourceEditor={editor} title={title} onClose={() => setPreviewOpen(false)} />
+      )}
     </header>
   )
 }
@@ -158,6 +175,15 @@ function SidebarLeftIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" />
       <line x1="6" y1="2.75" x2="6" y2="13.25" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  )
+}
+
+function PreviewIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.4" />
     </svg>
   )
 }

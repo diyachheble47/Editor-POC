@@ -1,0 +1,12 @@
+/* ================================================================
+   REDUCED MOTION
+   ================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar-left,
+  .app-sidebar-right,
+  .icon-btn,
+  .lsb-page-item,
+  .topbar-share-btn { transition: none; }
+}
+

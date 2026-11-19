@@ -1,0 +1,176 @@
+/* ================================================================
+   EQUATION BLOCK
+   ================================================================ */
+
+.equation-block {
+  margin: 8px 0;
+  padding: 16px 20px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface-hover);
+  font-size: 18px;
+  cursor: text;
+  display: flex;
+  justify-content: center;
+}
+
+.equation-block .katex { color: var(--c-text); }
+
+/* Equation editor panel */
+.equation-editor-panel {
+  margin: 8px 0;
+  padding: 14px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.eq-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.eq-toolbar button {
+  padding: 4px 9px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 5px;
+  background: var(--c-ground);
+  color: var(--c-text);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.2;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast);
+}
+
+.eq-toolbar button:hover:not(:disabled) { background: var(--c-surface-active); }
+.eq-toolbar button:disabled { opacity: 0.4; cursor: default; }
+
+.eq-toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--c-border);
+  margin: 0 4px;
+}
+
+.equation-preview {
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-lg);
+  background: var(--c-surface-hover);
+  font-size: 18px;
+  min-height: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.equation-preview .katex { color: var(--c-text); }
+
+.equation-input {
+  padding: 10px 14px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: 'Cambria Math', Cambria, Georgia, serif;
+  font-size: 16px;
+  margin-top: 8px;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.equation-input:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px rgba(47, 128, 237, 0.15);
+}
+
+.eq-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  min-height: 18px;
+}
+
+.eq-type-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--c-accent-bg);
+  color: var(--c-accent);
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.eq-validation-message.tone-good   { color: var(--c-success); }
+.eq-validation-message.tone-warn   { color: var(--c-warn); }
+.eq-validation-message.tone-bad    { color: var(--c-danger); }
+.eq-validation-message.tone-neutral{ color: var(--c-text-3); }
+
+.eq-toast {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  background: var(--c-success-bg);
+  color: var(--c-success);
+  font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--c-success) 35%, transparent);
+}
+
+.eq-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.eq-actions-spacer { flex: 1; }
+
+.eq-balance-button {
+  padding: 6px 14px;
+  border: 1px solid var(--c-success);
+  border-radius: var(--r-md);
+  background: var(--c-success-bg);
+  color: var(--c-success);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast);
+}
+
+.eq-balance-button:hover { background: color-mix(in srgb, var(--c-success) 18%, var(--c-surface)); }
+
+.eq-cancel-button,
+.eq-done-button {
+  padding: 6px 14px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast);
+}
+
+.eq-cancel-button {
+  background: var(--c-ground);
+  color: var(--c-text-2);
+  border: 1px solid var(--c-border-strong);
+}
+
+.eq-cancel-button:hover { background: var(--c-surface-active); }
+
+.eq-done-button {
+  background: var(--c-accent);
+  color: #fff;
+  border: 1px solid var(--c-accent);
+}
+
+.eq-done-button:hover { background: var(--c-accent-hover); }
+

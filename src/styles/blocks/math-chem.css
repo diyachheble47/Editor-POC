@@ -1,0 +1,219 @@
+/* ================================================================
+   MATH / CHEMISTRY BLOCKS
+   ================================================================ */
+
+.math-block {
+  position: relative;
+  padding: 12px 16px;
+  margin: 8px 0;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  overflow-x: auto;
+}
+
+.math-block:hover {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent-muted, #3b82f620);
+}
+
+.math-block.math-display { text-align: center; }
+.math-block.math-inline  { display: inline-block; }
+
+.math-block-hint {
+  display: none;
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: var(--c-text-3);
+  pointer-events: none;
+}
+
+.math-block:hover .math-block-hint { display: block; }
+
+.math-block-error {
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--c-danger-bg);
+  border: 1px solid #ef4444;
+  color: var(--c-danger);
+  font-size: 13px;
+}
+
+/* ── Math Editor Panel (right sidebar) ───────────────────────────── */
+
+.math-editor-panel { display: flex; flex-direction: column; gap: 14px; padding: 2px 2px 8px; }
+
+/* Shared header row — also used by the 3D Model Properties panel */
+.math-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.math-editor-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--r-md, 6px);
+  background: transparent;
+  color: var(--c-text-2);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.math-editor-back-btn:hover { background: var(--c-surface-hover); color: var(--c-text); }
+
+.math-editor-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.math-editor-badge {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--c-accent-surface, var(--c-surface));
+  color: var(--c-accent);
+  border: 1px solid var(--c-accent-muted, var(--c-border));
+}
+
+.math-preview {
+  padding: 16px 12px;
+  border-radius: var(--r-md, 8px);
+  background: var(--c-ground);
+  border: 1px solid var(--c-border);
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 15px;
+  overflow-x: auto;
+}
+
+.math-preview-error {
+  color: #ef4444;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  text-align: left;
+}
+
+.math-editor-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: -6px 0 -8px;
+}
+
+.math-editor-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  padding: 9px 10px;
+  border-radius: var(--r-md, 6px);
+  border: 1px solid var(--c-border);
+  background: var(--c-ground);
+  color: var(--c-text);
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.math-editor-textarea:focus {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent-muted, #3b82f620);
+}
+
+/* Symbol picker — a clean, evenly-sized button grid per section instead of
+   a ragged wrapped row, so it reads like a small keypad rather than a pile
+   of inconsistently-sized buttons. */
+.math-symbol-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.math-symbol-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.math-symbol-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 5px;
+}
+
+.math-sym-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  border-radius: var(--r-sm, 5px);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.math-sym-btn:hover { background: var(--c-accent-surface, var(--c-surface-hover)); border-color: var(--c-accent-muted, var(--c-border)); }
+
+.math-display-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--c-text-2);
+  cursor: pointer;
+  user-select: none;
+  border-top: 1px solid var(--c-border);
+  padding-top: 10px;
+}
+
+.math-display-toggle input[type="checkbox"] { cursor: pointer; }
+
+.math-editor-actions { display: flex; gap: 8px; }
+
+.math-save-btn,
+.math-close-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: var(--r-md, 6px);
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.1s, background 0.1s;
+}
+
+.math-save-btn { background: var(--c-accent); color: #fff; }
+.math-save-btn:hover { filter: brightness(1.1); }
+.math-close-btn { background: var(--c-surface); color: var(--c-text-2); border: 1px solid var(--c-border); }
+.math-close-btn:hover { background: var(--c-surface-hover); }
+

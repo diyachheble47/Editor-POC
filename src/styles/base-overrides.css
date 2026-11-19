@@ -1,0 +1,77 @@
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+@media (max-width: 1100px) {
+  :root {
+    --sidebar-l-w: 220px;
+    --sidebar-r-w: 256px;
+  }
+}
+
+@media (max-width: 768px) {
+  .editor-page { padding: 32px 24px 100px; }
+
+  .app-sidebar-left,
+  .app-sidebar-right {
+    position: fixed;
+    top: var(--topbar-h);
+    bottom: 0;
+    z-index: 20;
+    box-shadow: var(--shadow-lg);
+    transition: transform var(--t-slow);
+  }
+
+  .app-sidebar-left  { left: 0; }
+  .app-sidebar-right { right: 0; }
+
+  .app-sidebar-left.closed  { transform: translateX(-100%); width: var(--sidebar-l-w); border-right-color: var(--c-border); }
+  .app-sidebar-right.closed { transform: translateX(100%);  width: var(--sidebar-r-w); border-left-color: var(--c-border); }
+
+  /* Overlay backdrop — real div so it intercepts taps */
+  .app-mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: var(--topbar-h) 0 0 0;
+    background: rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(1px);
+    z-index: 19;
+    cursor: pointer;
+  }
+}
+
+/* ================================================================
+   FOCUS VISIBLE
+   ================================================================ */
+
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+/* The editor's contenteditable area already shows a caret + block-level
+   selection; it doesn't need the generic focus ring, which would otherwise
+   wrap its full min-height (60vh) as one big empty box. */
+.editor-input:focus-visible {
+  outline: none;
+}
+
+/* ================================================================
+   SCROLLBAR (webkit)
+   ================================================================ */
+
+.lsb-scroll::-webkit-scrollbar,
+.rpanel-content::-webkit-scrollbar,
+.editor-area-scroll::-webkit-scrollbar { width: 6px; }
+
+.lsb-scroll::-webkit-scrollbar-track,
+.rpanel-content::-webkit-scrollbar-track,
+.editor-area-scroll::-webkit-scrollbar-track { background: transparent; }
+
+.lsb-scroll::-webkit-scrollbar-thumb,
+.rpanel-content::-webkit-scrollbar-thumb,
+.editor-area-scroll::-webkit-scrollbar-thumb {
+  background: var(--c-border-strong);
+  border-radius: 3px;
+}
+

@@ -1,0 +1,92 @@
+/* ================================================================
+   COLUMNS LAYOUT
+   ================================================================ */
+
+.columns-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+  margin: 8px 0;
+}
+
+.columns-item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.columns-item:not(:first-child) {
+  border-left: 1px solid var(--c-border);
+  padding-left: 32px;
+}
+
+/* ── Electric circuit block ─────────────────────────────────────── */
+.circuit-block {
+  margin: 12px 0;
+  border: 1px solid var(--c-border, #e5e7eb);
+  border-radius: var(--r-md, 8px);
+  background: var(--c-surface, #fff);
+  overflow: hidden;
+  user-select: none;
+}
+.circuit-palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--c-border, #e5e7eb);
+}
+.circuit-palette-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 9px;
+  border: 1px solid var(--c-border, #d1d5db);
+  border-radius: 6px;
+  background: var(--c-surface, #fff);
+  cursor: pointer;
+}
+.circuit-palette-btn:hover { border-color: var(--c-accent); color: var(--c-accent); }
+.circuit-palette-hint { font-size: 12px; color: var(--c-text-3, #6b7280); margin-left: 4px; }
+.circuit-canvas { height: 320px; }
+/* Outside edit mode: no connection dots, no pointer cursor tricks. */
+.circuit-block:not(.circuit-editing) .react-flow__handle { opacity: 0; pointer-events: none; }
+.circuit-block:not(.circuit-editing) .circuit-canvas { cursor: pointer; }
+.circuit-part { position: relative; display: flex; flex-direction: column; align-items: center; }
+.circuit-symbol { color: var(--c-text, #111827); display: block; }
+.circuit-part-label { font-size: 11px; color: var(--c-text-3, #6b7280); text-align: center; }
+
+.topbar-sync-status { font-size: 12px; color: var(--c-text-3, #6b7280); margin-left: 10px; white-space: nowrap; }
+.topbar-sync-status.offline { color: var(--c-warn); }
+.topbar-sync-status.conflict { color: var(--c-danger); }
+
+
+/* AI generation */
+.topbar-ai-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--c-accent-text); }
+.topbar-ai-stop { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 4px; padding: 1px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+
+.ai-dialog-warn { margin: 0; padding: 8px 10px; background: var(--c-warn-bg); color: var(--c-text); border-radius: 6px; font-size: 13px; }
+.ai-dialog-cancel, .ai-dialog-submit { font: inherit; font-size: 14px; padding: 7px 16px; border-radius: 6px; cursor: pointer; }
+.ai-dialog-cancel { border: 1px solid var(--c-border-strong); background: transparent; color: inherit; }
+.ai-dialog-submit { border: none; background: var(--c-accent); color: #fff; }
+.ai-dialog-submit:disabled { opacity: 0.45; cursor: default; }
+
+.graph-fn-error-msg { margin-top: 4px; font-size: 12px; color: var(--c-danger); }
+
+/* ── /agent panel ───────────────────────────────────────────────── */
+.app-sidebar-right.agent-open { width: min(480px, 42vw); }
+.app-sidebar-right.agent-open .rpanel-inner { width: 100%; }
+.agent-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 14px; gap: 12px; }
+.agent-panel-head { display: flex; align-items: center; justify-content: space-between; }
+.agent-panel-head h2 { font-size: 16px; margin: 0; }
+.agent-panel-x { border: 0; background: transparent; cursor: pointer; font-size: 16px; color: inherit; }
+.agent-panel-sub { font-size: 13px; color: var(--c-text-2); margin: 0; }
+.agent-panel-form { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.agent-panel-go { align-self: flex-end; }
+.agent-panel-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.agent-preview { max-height: 45vh; overflow-y: auto; border: 1px solid var(--c-border); border-radius: 8px; padding: 8px 12px; flex-shrink: 0; }
+.agent-preview-input { outline: none; min-height: 0; }  /* fit the content, not the page's 60vh */
+.agent-panel-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.agent-panel-actions .ai-dialog-warn { flex-basis: 100%; margin: 0; }
+.agent-progress { display: flex; flex-direction: column; gap: 8px; }
+.agent-steps { margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--c-text-2); display: flex; flex-direction: column; gap: 2px; }
+

@@ -1,0 +1,185 @@
+/* ================================================================
+   APP SHELL
+   ================================================================ */
+
+.app-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-ground);
+  overflow: hidden;
+  font-family: var(--font-ui);
+}
+
+/* ================================================================
+   RESTORE WARNING BANNER
+   ================================================================ */
+
+.restore-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--c-warn-bg);
+  border-bottom: 1px solid var(--c-warn);
+  flex-shrink: 0;
+}
+
+.restore-warning-text {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--c-text);
+  font-family: var(--font-ui);
+  line-height: 1.4;
+}
+
+.restore-warning-dismiss {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--c-warn);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-fast);
+}
+
+.restore-warning-dismiss:hover {
+  background: color-mix(in srgb, var(--c-warn) 15%, transparent);
+}
+
+/* ================================================================
+   TOP BAR
+   ================================================================ */
+
+.app-topbar {
+  height: var(--topbar-h);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 8px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  gap: 2px;
+  z-index: 10;
+}
+
+.topbar-left  { display: flex; align-items: center; gap: 2px; }
+.topbar-center { flex: 1; }
+.topbar-right { display: flex; align-items: center; gap: 2px; }
+
+.topbar-divider {
+  display: block;
+  width: 1px;
+  height: 18px;
+  background: var(--c-border);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* Breadcrumb */
+.topbar-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 13px;
+}
+
+.topbar-crumb-subject { color: var(--c-text-3); }
+.topbar-crumb-sep     { color: var(--c-border-strong); }
+.topbar-crumb-title   { color: var(--c-text); font-weight: 500; }
+
+/* Save status */
+.topbar-save-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--c-text-3);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.topbar-save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-text-3);
+  flex-shrink: 0;
+  transition: background var(--t-fast);
+}
+
+.topbar-save-dot.saved   { background: var(--c-success); }
+.topbar-save-dot.unsaved { background: var(--c-warn); }
+.topbar-save-dot.saving  {
+  background: var(--c-accent);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.topbar-wordcount {
+  font-size: 11.5px;
+  color: var(--c-text-3);
+  letter-spacing: 0.01em;
+}
+
+/* Share button */
+.topbar-share-btn {
+  height: 28px;
+  padding: 0 13px;
+  background: var(--c-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast);
+}
+
+.topbar-share-btn:hover { background: var(--c-accent-hover); }
+
+/* Universal icon button */
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--c-text-2);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-fast), color var(--t-fast);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.icon-btn:hover:not(:disabled) { background: var(--c-surface-hover); color: var(--c-text); }
+.icon-btn:active:not(:disabled) { background: var(--c-surface-active); }
+.icon-btn.active { background: var(--c-accent-bg); color: var(--c-accent); }
+.icon-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* ================================================================
+   APP BODY
+   ================================================================ */
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
