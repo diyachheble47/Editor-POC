@@ -952,6 +952,10 @@
 
 .block-ctrl-drag {
   cursor: grab;
+  /* Pointer-driven drag (mouse, pen, and touch): without this, a touch drag
+     starting on the handle is hijacked by the browser as a page scroll
+     instead of reaching our pointermove handler. */
+  touch-action: none;
 }
 
 .block-ctrl-drag:active {

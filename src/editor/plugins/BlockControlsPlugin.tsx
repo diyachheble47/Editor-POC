@@ -33,6 +33,19 @@ function $deepCloneElement(node: ElementNode): ElementNode {
   return clone
 }
 
+// Hover controls, drag, and drop only ever match a direct child of root —
+// content inside a column (ColumnsPlugin) has no drag handle. Shared by the
+// root pointer listeners and the pointer-driven drag below, which both need
+// to resolve "which top-level block is at this point" outside of a hover
+// event's own target.
+function resolveBlockElement(root: HTMLElement, target: EventTarget | null): HTMLElement | null {
+  let elem = target as HTMLElement | null
+  while (elem && elem !== root && elem.parentElement !== root) {
+    elem = elem.parentElement
+  }
+  return elem && elem !== root ? elem : null
+}
+
 interface CtrlPos {
   top: number   // viewport-relative, center of block
   left: number  // viewport-relative, left edge of block
@@ -62,6 +75,8 @@ export function BlockControlsPlugin() {
   // click time has no way to track the page being scrolled afterward, which
   // is exactly what made it look stuck/detached as the content moved under it.
   const selectedElemRef = useRef<HTMLElement | null>(null)
+  const rootElRef = useRef<HTMLElement | null>(null)
+  const suppressClickRef = useRef(false)
 
   // blockSelection's selected key is a plain module-level singleton, living
   // outside React — so it survives this component unmounting. The editor
@@ -119,25 +134,26 @@ export function BlockControlsPlugin() {
       rootCleanupRef.current = null
 
       if (!root) return
+      rootElRef.current = root
 
-      // Hover controls, drag, and drop all only ever match a direct child of
-      // root — content inside a column (ColumnsPlugin) has no drag handle
-      // and can't be reordered this way. This is a deliberate scope limit,
-      // not an oversight: supporting it would mean resolving a hovered
-      // column child back to root-relative coordinates, plus deciding
-      // semantics for dragging a block across column boundaries or out of a
-      // column entirely — a real feature addition, not a bug fix. Content
-      // inside columns can still be edited, selected, and reordered via
-      // cut/paste; it simply doesn't have the hover drag affordance.
+      // Scope limit, not an oversight: content inside a column (ColumnsPlugin)
+      // has no drag handle and can't be reordered this way. Supporting it
+      // would mean resolving a hovered column child back to root-relative
+      // coordinates, plus deciding semantics for dragging a block across
+      // column boundaries or out of a column entirely — a real feature
+      // addition, not a bug fix. Content inside columns can still be edited,
+      // selected, and reordered via cut/paste; it simply doesn't have the
+      // hover drag affordance.
       function resolveHoveredBlock(target: EventTarget | null): HTMLElement | null {
-        let elem = target as HTMLElement | null
-        while (elem && elem !== root && elem.parentElement !== root) {
-          elem = elem.parentElement
-        }
-        return elem && elem !== root ? elem : null
+        return resolveBlockElement(root!, target)
       }
 
       function onPointerMove(e: PointerEvent) {
+        // Touch has no hover: a touchmove only fires while a finger is down
+        // and sliding, which is a scroll gesture here, not "show me the
+        // controls for whatever's under my finger" — leave reveal-by-touch
+        // to the tap handling in onPointerDown below.
+        if (e.pointerType === 'touch') return
         cancelHide()
 
         const elem = resolveHoveredBlock(e.target)
@@ -198,6 +214,35 @@ export function BlockControlsPlugin() {
       // decorator's rendered content (however deeply nested under a
       // paragraph) straight to that decorator node, not to an ancestor.
       function onPointerDown(e: PointerEvent) {
+        // No hover on touch, so a tap doubles as the reveal gesture: show
+        // the drag-handle/add-button pair for whatever block was tapped,
+        // same position a mouse hover would've produced. Tapping empty
+        // space below the last block hides them again.
+        if (e.pointerType === 'touch') {
+          cancelHide()
+          const elem = resolveHoveredBlock(e.target)
+          if (elem) {
+            let foundKey: NodeKey | null = null
+            editor.getEditorState().read(() => {
+              for (const child of $getRoot().getChildren()) {
+                if (editor.getElementByKey(child.getKey()) === elem) {
+                  foundKey = child.getKey()
+                  break
+                }
+              }
+            })
+            if (foundKey) {
+              nodeKeyRef.current = foundKey
+              const rect = elem.getBoundingClientRect()
+              setCtrlPos({ top: rect.top + rect.height / 2, left: rect.left })
+            } else {
+              scheduleHide()
+            }
+          } else {
+            scheduleHide()
+          }
+        }
+
         const target = e.target as Node | null
         let foundKey: NodeKey | null = null
         let foundElem: HTMLElement | null = null
@@ -224,78 +269,14 @@ export function BlockControlsPlugin() {
         selectBlock(foundKey, foundElem)
       }
 
-      function onDragOver(e: DragEvent) {
-        if (!draggedKeyRef.current) return
-        e.preventDefault()
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-
-        const elem = resolveHoveredBlock(e.target)
-        if (!elem) return
-
-        let targetKey: NodeKey | null = null
-        editor.getEditorState().read(() => {
-          for (const child of $getRoot().getChildren()) {
-            if (editor.getElementByKey(child.getKey()) === elem) {
-              targetKey = child.getKey()
-              break
-            }
-          }
-        })
-        if (!targetKey || targetKey === draggedKeyRef.current) {
-          setDropLine(null)
-          dropTargetRef.current = null
-          return
-        }
-
-        const rect = elem.getBoundingClientRect()
-        const before = e.clientY < rect.top + rect.height / 2
-        dropTargetRef.current = { key: targetKey, position: before ? 'before' : 'after' }
-        setDropLine({
-          top: before ? rect.top : rect.bottom,
-          left: rect.left,
-          width: rect.width,
-        })
-      }
-
-      function onDrop(e: DragEvent) {
-        if (!draggedKeyRef.current) return
-        e.preventDefault()
-        const draggedKey = draggedKeyRef.current
-        const target = dropTargetRef.current
-        draggedKeyRef.current = null
-        dropTargetRef.current = null
-        setDropLine(null)
-
-        if (!target) return
-        // Moving a block must not scroll the page: Lexical would otherwise
-        // scroll the old caret position back into view, which looked like the
-        // whole screen jumping. Keep the scroll position exactly as it was.
-        const scroller = root?.closest('.editor-area-scroll') as HTMLElement | null
-        const top = scroller?.scrollTop ?? 0
-        editor.update(() => {
-          const draggedNode = $getNodeByKey(draggedKey)
-          const targetNode = $getNodeByKey(target.key)
-          if (!draggedNode || !targetNode) return
-          if (target.position === 'before') {
-            targetNode.insertBefore(draggedNode)
-          } else {
-            targetNode.insertAfter(draggedNode)
-          }
-        }, { tag: 'skip-scroll-into-view', onUpdate: () => { if (scroller) scroller.scrollTop = top } })
-      }
-
       root.addEventListener('pointermove', onPointerMove)
       root.addEventListener('pointerleave', onPointerLeave)
       root.addEventListener('pointerdown', onPointerDown)
-      root.addEventListener('dragover', onDragOver)
-      root.addEventListener('drop', onDrop)
 
       rootCleanupRef.current = () => {
         root.removeEventListener('pointermove', onPointerMove)
         root.removeEventListener('pointerleave', onPointerLeave)
         root.removeEventListener('pointerdown', onPointerDown)
-        root.removeEventListener('dragover', onDragOver)
-        root.removeEventListener('drop', onDrop)
       }
     })
 
@@ -415,6 +396,108 @@ export function BlockControlsPlugin() {
     setCtrlPos(null)
   }, [editor])
 
+  const performDrop = useCallback(() => {
+    const draggedKey = draggedKeyRef.current
+    const target = dropTargetRef.current
+    draggedKeyRef.current = null
+    dropTargetRef.current = null
+    setDropLine(null)
+    if (!draggedKey || !target) return
+    // Moving a block must not scroll the page: Lexical would otherwise
+    // scroll the old caret position back into view, which looked like the
+    // whole screen jumping. Keep the scroll position exactly as it was.
+    const root = rootElRef.current
+    const scroller = root?.closest('.editor-area-scroll') as HTMLElement | null
+    const top = scroller?.scrollTop ?? 0
+    editor.update(() => {
+      const draggedNode = $getNodeByKey(draggedKey)
+      const targetNode = $getNodeByKey(target.key)
+      if (!draggedNode || !targetNode) return
+      if (target.position === 'before') {
+        targetNode.insertBefore(draggedNode)
+      } else {
+        targetNode.insertAfter(draggedNode)
+      }
+    }, { tag: 'skip-scroll-into-view', onUpdate: () => { if (scroller) scroller.scrollTop = top } })
+  }, [editor])
+
+  // Drag-to-reorder, driven entirely by Pointer Events (not native HTML5
+  // drag-and-drop) so the same code path works for mouse, pen, and touch —
+  // native `draggable`/dragstart never fires from a touch gesture on
+  // mobile browsers. Pointer capture on the handle itself means move/up
+  // keep firing on it no matter where the finger/cursor actually is, so
+  // `document.elementFromPoint` is used to find what's really underneath.
+  const handleDragPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const key = nodeKeyRef.current
+    if (!key) return
+    e.preventDefault()
+    e.stopPropagation()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    draggedKeyRef.current = key
+    setMenuOpen(false)
+    const startX = e.clientX
+    const startY = e.clientY
+    let moved = false // a plain tap/click (no movement) should open the menu, not "drop"
+
+    function updateDropTarget(clientX: number, clientY: number) {
+      const root = rootElRef.current
+      if (!root) return
+      const elem = resolveBlockElement(root, document.elementFromPoint(clientX, clientY))
+      if (!elem) { setDropLine(null); dropTargetRef.current = null; return }
+
+      let targetKey: NodeKey | null = null
+      editor.getEditorState().read(() => {
+        for (const child of $getRoot().getChildren()) {
+          if (editor.getElementByKey(child.getKey()) === elem) {
+            targetKey = child.getKey()
+            break
+          }
+        }
+      })
+      if (!targetKey || targetKey === draggedKeyRef.current) {
+        setDropLine(null)
+        dropTargetRef.current = null
+        return
+      }
+      const rect = elem.getBoundingClientRect()
+      const before = clientY < rect.top + rect.height / 2
+      dropTargetRef.current = { key: targetKey, position: before ? 'before' : 'after' }
+      setDropLine({ top: before ? rect.top : rect.bottom, left: rect.left, width: rect.width })
+    }
+
+    function move(ev: PointerEvent) {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) moved = true
+      if (moved) updateDropTarget(ev.clientX, ev.clientY)
+    }
+    function cleanup() {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', end)
+      handle.removeEventListener('pointercancel', cancelDrag)
+    }
+    function end() {
+      cleanup()
+      if (moved) {
+        // The click event that follows this pointerup would otherwise toggle
+        // the actions menu open right after a real drag.
+        suppressClickRef.current = true
+        performDrop()
+      } else {
+        draggedKeyRef.current = null
+        dropTargetRef.current = null
+      }
+    }
+    function cancelDrag() {
+      cleanup()
+      draggedKeyRef.current = null
+      dropTargetRef.current = null
+      setDropLine(null)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', end)
+    handle.addEventListener('pointercancel', cancelDrag)
+  }, [editor, performDrop])
+
   if (!ctrlPos && !dropLine) return null
 
   const CTRL_WIDTH = 52  // combined width of both buttons + gap
@@ -436,32 +519,10 @@ export function BlockControlsPlugin() {
           className="block-ctrl-btn block-ctrl-drag"
           title="Drag to move · Click for options"
           aria-label="Drag to move, or click for block options"
-          draggable
-          onDragStart={e => {
-            if (!nodeKeyRef.current) return
-            draggedKeyRef.current = nodeKeyRef.current
-            e.dataTransfer.effectAllowed = 'move'
-            e.dataTransfer.setData('text/plain', nodeKeyRef.current)
-            setMenuOpen(false)
-          }}
-          onDragEnd={() => {
-            draggedKeyRef.current = null
-            dropTargetRef.current = null
-            setDropLine(null)
-          }}
-          onMouseDown={e => {
-            // Only stop this from reaching Lexical (which would otherwise
-            // move the text selection here) — NOT preventDefault(). Per the
-            // HTML5 spec, mousedown's default action is what actually starts
-            // a native drag gesture on a draggable element; calling
-            // preventDefault() here cancels that silently, so a real mouse
-            // drag on this handle never fired `dragstart` at all (confirmed
-            // live: dispatching the drag events directly worked fine, but
-            // the real mousedown->drag path never got that far).
-            e.stopPropagation()
-          }}
+          onPointerDown={handleDragPointerDown}
           onClick={e => {
             e.stopPropagation()
+            if (suppressClickRef.current) { suppressClickRef.current = false; return }
             const key = nodeKeyRef.current
             const elem = key ? editor.getElementByKey(key) : null
             if (key && elem) selectBlock(key, elem)
@@ -475,7 +536,7 @@ export function BlockControlsPlugin() {
           className="block-ctrl-btn"
           title="Add block below"
           aria-label="Add block below"
-          onMouseDown={e => {
+          onPointerDown={e => {
             e.preventDefault()
             e.stopPropagation()
             handleAddBelow()
