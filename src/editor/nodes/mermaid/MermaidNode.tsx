@@ -1,19 +1,22 @@
 // MermaidNode — a diagram written as Mermaid text (flowchart, sequence, class,
-// state, ER, Gantt, pie, mind map…). Reading view is just the drawing; click
-// it to edit the text with a live preview. Click outside to go back.
+// state, ER, Gantt, pie, mind map…). Reading view is just the drawing,
+// resizable from its corners; click it to edit the text with a live preview.
+// Click outside to go back.
 
 import { DecoratorNode } from 'lexical'
 import type { EditorConfig, LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from 'lexical'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useBlockData } from '../_shared/useBlockData'
+import { ResizeFrame } from '../_shared/ResizeFrame'
 import { useTheme } from '../../../context/ThemeContext'
 import { renderMermaid } from './mermaidRender'
 import { MERMAID_TEMPLATES } from './templates'
 
-export type SerializedMermaidNode = Spread<{ code: string }, SerializedLexicalNode>
+export type SerializedMermaidNode = Spread<{ code: string; width: number }, SerializedLexicalNode>
 
 const MAX_CODE = 20000
 const DEFAULT_CODE = MERMAID_TEMPLATES[0].code
+const DEFAULT_WIDTH = 480
 
 /** Drawing for `code`; keeps the last good drawing while the text has errors. */
 function useDiagram(code: string, active: boolean) {
@@ -88,29 +91,39 @@ function useFitDiagram(boxRef: React.RefObject<HTMLDivElement | null>, svg: stri
   }, [boxRef, svg, active])
 }
 
-function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string }) {
-  const { data, change, rootRef, editing, setEditing } = useBlockData<{ code: string }>(
+function MermaidComponent({ nodeKey, code, width }: { nodeKey: NodeKey; code: string; width: number }) {
+  const { data, change, rootRef, editing, setEditing } = useBlockData<{ code: string; width: number }>(
     nodeKey,
-    { code },
-    (node, d) => { if (node instanceof MermaidNode) node.setCode(d.code) },
+    { code, width },
+    (node, d) => { if (node instanceof MermaidNode) { node.setCode(d.code); node.setWidth(d.width) } },
   )
   const { ref: viewRef, near } = useNearViewport()
 
-  // The textarea's own value while typing: writing every keystroke straight
-  // through to Lexical (change -> editor.update) forces a second, slightly
-  // later re-render of this component from the node's data, and committing a
-  // new .value to the <textarea> during THAT render — even to the same
-  // string — resets the browser's own cursor to the end, one render behind
-  // what was actually typed (worse under fast/automated typing, which can
-  // drop characters as the two updates race). Typing instead stays purely
-  // local — a plain controlled input, no cursor issue — and is written to
-  // Lexical only after a short pause, the same debounce HtmlNode already
-  // uses for its own live preview.
+  // The textarea is deliberately UNCONTROLLED: Lexical re-rendering this
+  // component a second time per keystroke (change -> editor.update, slightly
+  // after this component's own render for the same keystroke) used to fight
+  // a controlled <textarea> for its .value, which resets the browser's own
+  // cursor to the end on every commit — even to the same string — and under
+  // fast typing the two updates could race and drop characters outright.
+  // Typing is read straight off the DOM and kept in local state (liveCode)
+  // only to drive the diagram preview and a debounced write to Lexical (the
+  // same pattern HtmlNode already uses for its own live preview); the input
+  // element's own value is never re-assigned by a render while it's focused,
+  // so the browser's native cursor handling is never fought.
+  const codeRef = useRef<HTMLTextAreaElement>(null)
   const [liveCode, setLiveCode] = useState(data.code)
-  useEffect(() => { setLiveCode(data.code) }, [data.code])
+
+  // External changes (template pick, undo/redo, switching away and back)
+  // while the box isn't the one being typed into — write them into the DOM.
+  useLayoutEffect(() => {
+    const el = codeRef.current
+    if (el && document.activeElement !== el && el.value !== data.code) el.value = data.code
+    setLiveCode(data.code)
+  }, [data.code])
+
   useEffect(() => {
     if (liveCode === data.code) return
-    const t = setTimeout(() => change({ code: liveCode }), 300)
+    const t = setTimeout(() => change({ code: liveCode, width: data.width }), 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveCode])
@@ -118,7 +131,7 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
   // instead of leaving the last keystroke or two riding on the debounce above.
   useEffect(() => {
     if (editing) return
-    if (liveCode !== data.code) change({ code: liveCode })
+    if (liveCode !== data.code) change({ code: liveCode, width: data.width })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing])
 
@@ -127,9 +140,14 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
   useFitDiagram(boxRef, svg, editing)
 
   function pickTemplate(templateCode: string) {
+    if (codeRef.current) codeRef.current.value = templateCode
     setLiveCode(templateCode)
-    change({ code: templateCode })
+    change({ code: templateCode, width: data.width })
   }
+
+  const diagram = svg
+    ? <div className="mm-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+    : <div className="mm-empty">{busy ? 'Drawing…' : error ? '' : 'Write some Mermaid text to see a diagram'}</div>
 
   return (
     <div
@@ -142,18 +160,20 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
           box grow/shrink with it would shove the text box up and down under
           the cursor. The diagram itself is shrunk to fit (useFitDiagram), so
           it always stays fully visible, never cropped. Reading view (not
-          editing) sizes to the diagram at full size as usual. */}
-      <div
-        className={`mm-view${editing ? ' mm-view-fixed' : ''}`}
-        ref={boxRef}
-        onClick={() => setEditing(true)}
-        title={editing ? undefined : 'Click to edit'}
-      >
-        {svg
-          ? <div className="mm-svg" dangerouslySetInnerHTML={{ __html: svg }} />
-          : <div className="mm-empty">{busy ? 'Drawing…' : error ? '' : 'Write some Mermaid text to see a diagram'}</div>}
-        {error && <div className="mm-error" role="alert">{error}</div>}
-      </div>
+          editing) is resizable from its corners instead. */}
+      {editing ? (
+        <div className="mm-view mm-view-fixed" ref={boxRef}>
+          {diagram}
+          {error && <div className="mm-error" role="alert">{error}</div>}
+        </div>
+      ) : (
+        <ResizeFrame width={data.width} min={240} max={1200} onCommit={w => change({ code: data.code, width: w })}>
+          <div className="mm-view" onClick={() => setEditing(true)} title="Click to edit">
+            {diagram}
+            {error && <div className="mm-error" role="alert">{error}</div>}
+          </div>
+        </ResizeFrame>
+      )}
 
       {editing && (
         <div className="mm-editor">
@@ -165,10 +185,11 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
           <div className="hc">
             <div className="hc-head"><span className="hc-lang">Mermaid</span>{busy && <span className="hc-lang">drawing…</span>}</div>
             <textarea
+              ref={codeRef}
               className="mm-input"
               spellCheck={false}
               autoFocus
-              value={liveCode}
+              defaultValue={liveCode}
               maxLength={MAX_CODE}
               rows={Math.min(Math.max(liveCode.split('\n').length, 6), 18)}
               onChange={e => setLiveCode(e.target.value)}
@@ -191,26 +212,31 @@ function MermaidComponent({ nodeKey, code }: { nodeKey: NodeKey; code: string })
 
 export class MermaidNode extends DecoratorNode<React.ReactElement> {
   __code: string
+  __width: number
 
   static getType(): string { return 'mermaid' }
-  static clone(node: MermaidNode): MermaidNode { return new MermaidNode(node.__code, node.__key) }
+  static clone(node: MermaidNode): MermaidNode { return new MermaidNode(node.__code, node.__width, node.__key) }
 
-  constructor(code = DEFAULT_CODE, key?: NodeKey) {
+  constructor(code = DEFAULT_CODE, width = DEFAULT_WIDTH, key?: NodeKey) {
     super(key)
     this.__code = code
+    this.__width = width
   }
 
-  exportJSON(): SerializedMermaidNode { return { type: 'mermaid', version: 1, code: this.__code } }
-  static importJSON(s: SerializedMermaidNode): MermaidNode { return new MermaidNode(String(s.code ?? '').slice(0, MAX_CODE)) }
+  exportJSON(): SerializedMermaidNode { return { type: 'mermaid', version: 1, code: this.__code, width: this.__width } }
+  static importJSON(s: SerializedMermaidNode): MermaidNode {
+    return new MermaidNode(String(s.code ?? '').slice(0, MAX_CODE), s.width ?? DEFAULT_WIDTH)
+  }
 
   setCode(code: string): void { this.getWritable().__code = code }
+  setWidth(width: number): void { this.getWritable().__width = width }
 
   isInline(): boolean { return false }
   createDOM(_config: EditorConfig): HTMLElement { return document.createElement('div') }
   updateDOM(): boolean { return false }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): React.ReactElement {
-    return <MermaidComponent nodeKey={this.getKey()} code={this.__code} />
+    return <MermaidComponent nodeKey={this.getKey()} code={this.__code} width={this.__width} />
   }
 }
 
