@@ -24,6 +24,11 @@ interface Props {
 export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) {
   const [editor] = useLexicalComposerContext()
   const { theme } = useTheme()
+  // Read-only hosts (the document Preview) set the whole editor non-editable
+  // rather than this one block — Excalidraw's own toolbar, selection handles
+  // and "click to draw" affordance otherwise show regardless, since none of
+  // that is gated by Lexical's `editable` flag on its own.
+  const isEditable = editor.isEditable()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isActive, setIsActive] = useState(false)
   const inlineAPIRef = useRef<ExcalidrawAPI | null>(null)
@@ -92,8 +97,9 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
   }
 
   // Loaded and not being interacted with: drop the header bar so the drawing
-  // can sit inline with text, just like the 3D model block does.
-  const borderless = !isActive
+  // can sit inline with text, just like the 3D model block does. Read-only
+  // is always borderless — there's no editing to switch into.
+  const borderless = !isActive || !isEditable
 
   return (
     <div
@@ -124,6 +130,7 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
         }>
           <Excalidraw
             theme={theme}
+            viewModeEnabled={!isEditable}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             excalidrawAPI={(api: any) => { inlineAPIRef.current = api }}
             initialData={initialData}
@@ -141,7 +148,7 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
           />
         </Suspense>
 
-        {borderless && (
+        {borderless && isEditable && (
           <button
             type="button"
             className="excalidraw-fullscreen-btn excalidraw-fullscreen-btn--floating"
@@ -152,7 +159,7 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
           </button>
         )}
 
-        {borderless && (
+        {borderless && isEditable && (
           <div
             className="excalidraw-activate-overlay"
             onClick={() => setIsActive(true)}
@@ -175,6 +182,7 @@ export function ExcalidrawViewer({ nodeKey, elements, appState, title }: Props) 
             <Suspense fallback={<div style={{ padding: 24, color: 'var(--c-text-3)' }}>Loading…</div>}>
               <Excalidraw
                 theme={theme}
+                viewModeEnabled={!isEditable}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 excalidrawAPI={(api: any) => { fullscreenAPIRef.current = api }}
                 initialData={initialData}

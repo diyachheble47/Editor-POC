@@ -61,6 +61,20 @@
 }
 .preview-overlay-close:hover { background: var(--c-accent-hover); }
 
+.preview-overlay-print {
+  padding: 6px 16px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.preview-overlay-print:hover { background: var(--c-surface-hover); color: var(--c-text); }
+
 .preview-overlay-scroll {
   flex: 1;
   min-height: 0;
@@ -83,6 +97,13 @@
   position: relative;
 }
 
+.preview-overlay-error {
+  color: var(--c-text-2);
+  font-size: 14px;
+  font-family: var(--font-ui);
+  padding: 24px 0;
+}
+
 .preview-overlay-doc-title {
   font-size: clamp(26px, 3.5vw, 36px);
   font-weight: 700;
@@ -101,5 +122,31 @@
   pointer-events: none;
   min-height: 0;
   caret-color: transparent;
+}
+
+/* Printing (Export PDF uses the browser's own print dialog, see
+   PreviewModal's handlePrint): the rest of the app (#root) is hidden so
+   only the preview prints, and the overlay's fixed-viewport/scroll-box
+   layout — built for on-screen use — is relaxed back to plain flow so the
+   page can paginate naturally instead of being clipped to one screen. */
+@media print {
+  body:has(.preview-overlay) #root { display: none; }
+
+  .preview-overlay {
+    position: static;
+    inset: auto;
+    height: auto;
+    background: #fff;
+  }
+  .preview-overlay-bar { display: none; }
+  .preview-overlay-scroll {
+    overflow: visible;
+    height: auto;
+    display: block;
+  }
+  .preview-overlay-page {
+    max-width: 100%;
+    padding: 0;
+  }
 }
 
