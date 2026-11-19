@@ -76,7 +76,7 @@ export function AgentFlyout({
     const topic = genTopic.trim()
     if (!topic) return
     const label = GENERATE_TYPES.find(t => t.value === genType)?.label ?? genType
-    onRun('edit', `Insert exactly one new ${label} block about: ${topic}. Keep every other existing block in the document exactly as it is right now — do not add, remove, or change anything else.`)
+    onRun('edit', `Add ONE new ${label} block about: ${topic}. Nothing else: do not add a heading, title, intro text, or any other block, and do not change or remove any existing block — keep every one of them exactly as it is, word for word.`)
   }
 
   return (

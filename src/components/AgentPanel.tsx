@@ -189,7 +189,19 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   // "keep" lines, text: ''); the block below exists only to redirect a
   // *person* who picked Edit mode on nothing toward Workbook/Lesson instead,
   // so Generate opts out of it rather than hitting that same refusal.
-  const send = useCallback(async (kind: AiKind, rawPrompt: string, allowEmptyEdit = false) => {
+  // `singleBlock`: the instruction crafted for Generate ("insert exactly one
+  // new X block...") is just text in the prompt — the model following it is
+  // a request, not a guarantee, and it has been observed ignoring it and
+  // writing a whole document instead. This enforces it for real: once one
+  // new (non-"keep") block has landed, any further new block is dropped.
+  // The stream itself is NOT aborted early, even though the one block we
+  // want has already arrived — 'edit' only gets the rest of the ORIGINAL
+  // document right by the model re-echoing every remaining block as a
+  // "keep" line in order; cutting the stream off partway through that
+  // (confirmed live: it silently drops every block after the cut) loses
+  // whatever the model hadn't gotten to yet, which is worse than the
+  // problem this is fixing.
+  const send = useCallback(async (kind: AiKind, rawPrompt: string, allowEmptyEdit = false, singleBlock = false) => {
     const prompt = rawPrompt.trim()
     if (!prompt || abortRef.current) return
     const empty = isDocEmpty(mainEditor)
@@ -246,6 +258,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     }, { discrete: true })
 
     let failure: string | null = null
+    let newBlocks = 0 // non-"keep" blocks actually started, only tracked/capped when singleBlock
     try {
       await streamAiDocument(request, event => {
         if (event.t === 'error') { failure = event.message; return }
@@ -262,6 +275,10 @@ export function AgentPanel({ session }: { session: AgentSession }) {
               }, { discrete: true })
             }
             return
+          }
+          if (singleBlock) {
+            newBlocks++
+            if (newBlocks > 1) return // already have our one block — drop anything after it
           }
         }
         builder.apply(event)
@@ -319,7 +336,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   useEffect(() => {
     if (!loaded || !session.run || startedRef.current) return
     startedRef.current = true
-    void send(session.run.kind, session.run.prompt, session.run.allowEmpty)
+    void send(session.run.kind, session.run.prompt, session.run.allowEmpty, session.run.singleBlock)
   }, [loaded, session.run, send])
 
   function accept() {
