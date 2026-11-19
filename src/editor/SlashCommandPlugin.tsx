@@ -20,6 +20,11 @@ import {
 import { useEditorUI } from './context/EditorUIContext'
 import { AgentFlyout } from './AgentFlyout'
 import type { FlyoutKind } from './AgentFlyout'
+
+// Block keys whose slash-menu row opens AgentFlyout beside the list instead
+// of inserting anything itself — "Agent" (all three rows) and "Generate"
+// (just its one row).
+const FLYOUT_KEYS = new Set(['agent', 'ai-generate'])
 import {
   BLOCK_REGISTRY,
   CATEGORY_ORDER,
@@ -146,13 +151,25 @@ export function SlashCommandPlugin() {
       setGhost(host && rect.height ? { x: rect.right + 4, y: rect.top, h: rect.height, font: getComputedStyle(host).fontSize } : null)
     }
     measure()
+    // The ghost must vanish as soon as the "/" is gone (block inserted, menu
+    // dismissed, caret moved) — the query alone stays '' in those cases.
+    const unregister = editor.registerUpdateListener(({ editorState }) => {
+      const stillLoneSlash = editorState.read(() => {
+        const sel = $getSelection()
+        if (!$isRangeSelection(sel) || !sel.isCollapsed() || sel.anchor.offset < 1) return false
+        const n = sel.anchor.getNode()
+        return $isTextNode(n) && n.getTextContent().slice(sel.anchor.offset - 1, sel.anchor.offset) === '/'
+      })
+      if (!stillLoneSlash) setGhost(null)
+    })
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
     return () => {
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
+      unregister()
     }
-  }, [queryString])
+  }, [queryString, editor])
 
   // Arrow keys count as "going to" an item: run first, never swallow the key
   // (the typeahead itself moves the highlight). Right on Agent opens its submenu.
@@ -247,14 +264,16 @@ export function SlashCommandPlugin() {
         block = fresh[0] ?? block
       }
 
-      // "AI Agent" is a submenu: choosing it (Enter / click) moves into the first
-      // blank. Only Run from the submenu goes on to remove "/agent" and start it.
-      const run = block.key === 'agent' ? pendingRunRef.current : null
-      if (block.key === 'agent') {
+      // "Agent" and "Generate" are submenus: choosing one (Enter / click) moves
+      // into its first blank. Only Run from the submenu goes on to remove the
+      // typed "/agent" or "/generate" and start it.
+      const run = FLYOUT_KEYS.has(block.key) ? pendingRunRef.current : null
+      if (FLYOUT_KEYS.has(block.key)) {
         if (!run) { setFlyoutOpen(true); requestAnimationFrame(() => focusFlyoutRef.current?.()); return }
         pendingRunRef.current = null
       }
 
+      setGhost(null)
       // This callback already runs inside the typeahead's own editor.update, so
       // the "/query" is removed right here. Wrapping it in another editor.update
       // would only queue it until after this one finishes — and blocks that
@@ -332,10 +351,11 @@ export function SlashCommandPlugin() {
         // Track index into the `options` array (only available blocks) for keyboard highlight
         let availableIdx = 0
 
-        const agentOption = options.find(o => o.block.key === 'agent')
-        const agentHighlighted = options[selectedIndex ?? -1]?.block.key === 'agent'
-        agentHighlightedRef.current = agentHighlighted
-        const showFlyout = Boolean(agentOption) && agentHighlighted && flyoutOpen
+        const highlightedKey = options[selectedIndex ?? -1]?.block.key
+        const flyoutHighlighted = Boolean(highlightedKey && FLYOUT_KEYS.has(highlightedKey))
+        const flyoutOption = flyoutHighlighted ? options.find(o => o.block.key === highlightedKey) : undefined
+        agentHighlightedRef.current = flyoutHighlighted
+        const showFlyout = Boolean(flyoutOption) && flyoutOpen
 
         return createPortal(
           <div className="slash-menu-wrap">
@@ -364,7 +384,7 @@ export function SlashCommandPlugin() {
                             // pointer fires mouseenter without any movement.
                             if (!e.movementX && !e.movementY) return
                             if (myIdx !== selectedIndex) setHighlightedIndex(myIdx)
-                            if (block.key === 'agent') setFlyoutOpen(true)
+                            if (FLYOUT_KEYS.has(block.key)) setFlyoutOpen(true)
                           }}
                           onClick={() => {
                             const opt = options[myIdx]
@@ -396,14 +416,15 @@ export function SlashCommandPlugin() {
               </div>
             ))}
           </div>
-          {showFlyout && agentOption && (
+          {showFlyout && flyoutOption && (
             <AgentFlyout
+              rows={highlightedKey === 'ai-generate' ? ['generate'] : undefined}
               focusRef={focusFlyoutRef}
               onBack={() => editor.focus()}
               onRun={(kind, prompt) => {
                 pendingRunRef.current = { kind, prompt }
-                // Focus is in a blank; bring the editor's selection back so "/agent" can be removed.
-                editor.focus(() => selectOptionAndCleanUp(agentOption))
+                // Focus is in a blank; bring the editor's selection back so the typed "/agent"/"/generate" can be removed.
+                editor.focus(() => selectOptionAndCleanUp(flyoutOption))
               }}
             />
           )}

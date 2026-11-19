@@ -411,10 +411,10 @@ BLOCK_REGISTRY.unshift(
     icon: '⚡',
     description: 'Generate content from a prompt',
     category: 'ai',
-    status: 'coming-soon',
+    status: 'available',
     keywords: ['generate', 'ai', 'write'],
     inSlash: true,
     inSidebar: false,
-    insert: () => {},
+    insert: () => { /* handled by SlashCommandPlugin (submenu) */ },
   },
 )
