@@ -7,6 +7,7 @@ import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin'
 import { SlashCommandPlugin } from './SlashCommandPlugin'
 import { MatrixPickerPlugin, MatrixControlsPlugin } from './nodes/matrix'
+import { DataTablePickerPlugin } from './nodes/datatable'
 import { InitStreamPlugin } from './plugins/InitStreamPlugin'
 import { SavePlugin } from './plugins/SavePlugin'
 import { BlockControlsPlugin } from './plugins/BlockControlsPlugin'
@@ -64,6 +65,9 @@ export function EditorArea() {
           {/* Matrix: size picker on insert, +/- row/column controls while editing */}
           <MatrixPickerPlugin />
           <MatrixControlsPlugin />
+
+          {/* Table: size picker on insert (same hover-a-grid as Matrix) */}
+          <DataTablePickerPlugin />
 
           {/* Persistence */}
           <SavePlugin />

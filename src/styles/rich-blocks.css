@@ -24,9 +24,23 @@
 .rt-scroll { overflow-x: auto; }
 .rich-table { width: 100%; border-collapse: collapse; font-size: 14.5px; color: var(--c-text); }
 .rich-table th, .rich-table td { text-align: left; padding: 10px 12px; vertical-align: top; border-bottom: 1px solid var(--c-border); line-height: 1.5; }
-.rich-table th { background: var(--c-accent-bg); font-weight: 600; white-space: nowrap; }
+.rich-table th {
+  background: var(--c-accent-muted); color: var(--c-accent-text); font-weight: 600; white-space: nowrap;
+  position: relative; /* anchors .rt-col-resizer */
+}
 .rich-table th:first-child { border-top-left-radius: 8px; }
 .rich-table th:last-child { border-top-right-radius: 8px; }
+
+/* Column resize: a thin grab strip straddling each header cell's right edge.
+   Only the header carries it (one handle per column, not one per cell per
+   row) — dragging sets that column's own width via a <colgroup>, same
+   single-column-resizes-itself behaviour as a spreadsheet, not a Word table
+   where resizing one column steals width from its neighbour. */
+.rt-col-resizer {
+  position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize;
+  touch-action: none; z-index: 1;
+}
+.rt-col-resizer:hover, .rt-col-resizer.active { background: var(--c-accent); opacity: 0.5; }
 .rich-table tbody tr:hover td { background: var(--c-surface-hover); }
 .rich-table input {
   width: 100%; min-width: 80px; box-sizing: border-box; font: inherit; font-weight: inherit; color: inherit;
