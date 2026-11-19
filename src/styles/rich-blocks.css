@@ -7,6 +7,15 @@
   position: absolute; left: -28px; right: -28px; z-index: 0; pointer-events: none;
   background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 16px;
 }
+/* These boxes are positioned with pixel values measured from the on-screen
+   layout (SectionCardsPlugin). Printing reflows the page to the paper's own
+   width and pagination, which that measurement never re-runs for — the
+   boxes land at stale offsets instead of around their section, showing up
+   as stray misplaced lines rather than being dropped outright, which is
+   worse than just not drawing them. */
+@media print {
+  .section-card { display: none; }
+}
 .editor-input .section-heading { margin-top: 56px; font-size: 22px; letter-spacing: -0.015em; }
 
 /* ── Styled table ── */
