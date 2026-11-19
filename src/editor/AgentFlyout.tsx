@@ -1,50 +1,68 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { MutableRefObject, ReactNode } from 'react'
 
-export type FlyoutKind = 'workbook' | 'lesson' | 'lesson_plan'
-type RowId = 'workbook' | 'lesson' | 'lesson_plan' | 'generate'
+export type FlyoutKind = 'workbook' | 'lesson' | 'lesson_plan' | 'edit'
+type RowId = 'workbook' | 'lesson' | 'lesson_plan'
 
 // Each row reads as a sentence with a blank to fill in: "Create a Workbook for ______".
-// `id` is the row's own identity (keeps its typed value separate even when two
-// rows share an underlying AiKind, as 'lesson' and 'generate' do below); `kind`
-// is what actually gets sent to the AI.
 const ROWS: { id: RowId; kind: FlyoutKind; label: ReactNode; aria: string; placeholder: string }[] = [
   { id: 'workbook', kind: 'workbook', label: <>Create a <strong>Workbook</strong> for</>, aria: 'Create a Workbook for', placeholder: 'topic, class…' },
   { id: 'lesson', kind: 'lesson', label: <>Create a <strong>Lesson Builder</strong> for</>, aria: 'Create a Lesson Builder for', placeholder: 'topic, class…' },
   { id: 'lesson_plan', kind: 'lesson_plan', label: <>Create a <strong>Lesson Plan</strong> for</>, aria: 'Create a Lesson Plan for', placeholder: 'topic, duration…' },
-  // No kind of its own on the backend — "Generate" is a quick, no-settings way
-  // into the same free-topic content generation "Lesson Builder" already does.
-  { id: 'generate', kind: 'lesson', label: <strong>Generate</strong>, aria: 'Generate', placeholder: 'Electric Circuits' },
+]
+
+// What "Generate" can produce — one block, exactly this type. `value` is the
+// AiBlock `type` string (matches src/storage/api.ts's AiBlock union and
+// backend/app/ai_blocks.py's sanitize_block dispatch 1:1), not a display label.
+const GENERATE_TYPES: { value: string; label: string }[] = [
+  { value: 'graph', label: 'Graph' },
+  { value: 'geometry', label: 'Geometry' },
+  { value: 'molecule', label: 'Molecule' },
+  { value: 'circuit', label: 'Circuit' },
+  { value: 'matrix', label: 'Matrix' },
+  { value: 'flowchart', label: 'Flowchart' },
+  { value: 'chart', label: 'Chart' },
+  { value: 'equation', label: 'Equation' },
 ]
 
 const WIDTH = 440
 
 /**
  * The submenu that opens beside the slash menu's "Agent" and "Generate"
- * items. Fill-in-the-blank sentences (one for "Generate"); the Run button
- * and ↵ hint appear only on the row being typed in. Arrow Up/Down moves
- * between rows, Enter runs, and Escape (or Left at the start of a blank)
- * goes back to the slash menu.
+ * items.
+ *
+ * "Agent" shows the three fill-in-the-blank sentence rows below. "Generate"
+ * (`rows={['generate']}`) shows a single different row instead: a block-type
+ * dropdown + a topic blank. Unlike the sentence rows (which all run through
+ * `AiKind: 'lesson'|'workbook'|'lesson_plan'`, a full document-generation
+ * pass), Generate always runs as `'edit'` — the same "add/change specific
+ * blocks, keep the rest" pipeline the AI Agent panel's own Edit mode uses —
+ * with an instruction built here that pins it to inserting exactly one block
+ * of the chosen type, nothing else.
  */
 export function AgentFlyout({
   rows, onRun, onBack, focusRef,
 }: {
   /** Which rows to show, and in what order. Defaults to all three "Agent" rows. */
-  rows?: RowId[]
+  rows?: (RowId | 'generate')[]
   onRun: (kind: FlyoutKind, prompt: string) => void
   onBack: () => void
   focusRef: MutableRefObject<(() => void) | null>
 }) {
-  const shown = ROWS.filter(r => (rows ?? ['workbook', 'lesson', 'lesson_plan']).includes(r.id))
-  const [values, setValues] = useState<Record<RowId, string>>({ workbook: '', lesson: '', lesson_plan: '', generate: '' })
+  const showGenerate = (rows ?? []).includes('generate')
+  const shown = showGenerate ? [] : ROWS.filter(r => (rows ?? ['workbook', 'lesson', 'lesson_plan']).includes(r.id))
+  const [values, setValues] = useState<Record<RowId, string>>({ workbook: '', lesson: '', lesson_plan: '' })
+  const [genType, setGenType] = useState(GENERATE_TYPES[0].value)
+  const [genTopic, setGenTopic] = useState('')
   const [flip, setFlip] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const inputs = useRef<(HTMLInputElement | null)[]>([])
+  const genTopicRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    focusRef.current = () => inputs.current[0]?.focus()
+    focusRef.current = () => (showGenerate ? genTopicRef.current : inputs.current[0])?.focus()
     return () => { focusRef.current = null }
-  }, [focusRef])
+  }, [focusRef, showGenerate])
 
   // Open to the left instead when there is no room on the right of the slash menu.
   useLayoutEffect(() => {
@@ -54,9 +72,50 @@ export function AgentFlyout({
     setFlip(r.right + 6 + WIDTH > window.innerWidth && r.left - 6 - WIDTH > 0)
   }, [])
 
+  function runGenerate() {
+    const topic = genTopic.trim()
+    if (!topic) return
+    const label = GENERATE_TYPES.find(t => t.value === genType)?.label ?? genType
+    onRun('edit', `Insert exactly one new ${label} block about: ${topic}. Keep every other existing block in the document exactly as it is right now — do not add, remove, or change anything else.`)
+  }
+
   return (
     <div ref={rootRef} className={`agent-flyout${flip ? ' flip' : ''}`} style={{ width: WIDTH }} role="group" aria-label="AI Agent">
-      <div className="agent-flyout-head">{shown.length === 1 && shown[0].id === 'generate' ? 'Generate with AI' : 'Create with AI'}</div>
+      <div className="agent-flyout-head">{showGenerate ? 'Generate a block with AI' : 'Create with AI'}</div>
+
+      {showGenerate && (
+        <label className="agent-flyout-row agent-flyout-generate">
+          <select
+            className="agent-flyout-select"
+            value={genType}
+            onChange={e => setGenType(e.target.value)}
+            aria-label="Block type to generate"
+          >
+            {GENERATE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <input
+            ref={genTopicRef}
+            className="agent-flyout-blank"
+            value={genTopic}
+            maxLength={2000}
+            placeholder="Electric Circuits"
+            onChange={e => setGenTopic(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); runGenerate() }
+              else if (e.key === 'Escape' || (e.key === 'ArrowLeft' && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0)) {
+                e.preventDefault(); onBack()
+              }
+            }}
+            aria-label="Topic"
+          />
+          {genTopic.trim() && (
+            <button type="button" className="agent-flyout-run" onClick={runGenerate}>
+              Run <span className="agent-run-enter" aria-hidden="true">↵</span>
+            </button>
+          )}
+        </label>
+      )}
+
       {shown.map((row, i) => {
         const value = values[row.id]
         const typed = value.trim().length > 0

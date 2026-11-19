@@ -6,7 +6,7 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { $createParagraphNode, $getNodeByKey, $getRoot, $parseSerializedNode } from 'lexical'
+import { $createParagraphNode, $createTextNode, $getNodeByKey, $getRoot, $parseSerializedNode } from 'lexical'
 import type { LexicalEditor, SerializedLexicalNode } from 'lexical'
 import { useDocument } from '../context/DocumentContext'
 import { useEditorUI } from '../editor/context/EditorUIContext'
@@ -40,6 +40,14 @@ const MODES: { kind: AiKind; label: string; hint: string; placeholder: string }[
   { kind: 'lesson_plan', label: 'Lesson plan', hint: 'Timed plan for the teacher', placeholder: 'Topic, class, duration…' },
 ]
 const KIND_NAME: Record<AiKind, string> = { edit: 'Edit', workbook: 'Workbook', lesson: 'Lesson builder', lesson_plan: 'Lesson plan' }
+
+/** The small label at the top of a generated document: its type, styled as a kicker, not a heading. */
+function kindKickerNode(name: string) {
+  const paragraph = $createParagraphNode()
+  paragraph.setStyle('font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text-3, #6b7280); margin-bottom: 0.25rem')
+  paragraph.append($createTextNode(name))
+  return paragraph
+}
 
 const STATUS_TEXT: Record<NonNullable<AiChatMessage['status']>, string> = {
   accepted: 'Applied to the document',
@@ -173,7 +181,15 @@ export function AgentPanel({ session }: { session: AgentSession }) {
 
   const close = () => { abortRef.current?.abort(); update({ agent: null }) }
 
-  const send = useCallback(async (kind: AiKind, rawPrompt: string) => {
+  // `allowEmptyEdit`: the slash menu's "Generate" also runs as kind 'edit'
+  // (add one new block, keep the rest — the same "keep/add" mechanism this
+  // panel's own Edit mode uses), but unlike that mode, Generate makes just as
+  // much sense on a blank document (there's simply nothing to keep) as on a
+  // full one. buildEditContext already handles an empty document fine (zero
+  // "keep" lines, text: ''); the block below exists only to redirect a
+  // *person* who picked Edit mode on nothing toward Workbook/Lesson instead,
+  // so Generate opts out of it rather than hitting that same refusal.
+  const send = useCallback(async (kind: AiKind, rawPrompt: string, allowEmptyEdit = false) => {
     const prompt = rawPrompt.trim()
     if (!prompt || abortRef.current) return
     const empty = isDocEmpty(mainEditor)
@@ -181,7 +197,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     const scoped = kind === 'edit' ? scope : null
     const asked: AiChatMessage = { id: uid(), role: 'user', text: scoped ? `On: “${scoped.text}”\n${prompt}` : prompt, kind, at: Date.now() }
 
-    if (kind === 'edit' && empty) {
+    if (kind === 'edit' && empty && !allowEmptyEdit) {
       push(asked, { id: uid(), role: 'assistant', text: 'The document is empty, so there is nothing to edit yet. Pick Workbook, Lesson builder or Lesson plan to create something.', status: 'error', at: Date.now() })
       return
     }
@@ -223,7 +239,11 @@ export function AgentPanel({ session }: { session: AgentSession }) {
       aiAbortRef.current = () => ai.abort()
       setAiState({ status: 'generating', message: null, startedAt: Date.now() })
     }
-    target.update(() => { $getRoot().clear() }, { discrete: true })
+    target.update(() => {
+      $getRoot().clear()
+      // Create requests open with a small kicker ("WORKBOOK", "LESSON PLAN"), not a heading.
+      if (kind !== 'edit') $getRoot().append(kindKickerNode(KIND_NAME[kind]))
+    }, { discrete: true })
 
     let failure: string | null = null
     try {
@@ -299,7 +319,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   useEffect(() => {
     if (!loaded || !session.run || startedRef.current) return
     startedRef.current = true
-    void send(session.run.kind, session.run.prompt)
+    void send(session.run.kind, session.run.prompt, session.run.allowEmpty)
   }, [loaded, session.run, send])
 
   function accept() {

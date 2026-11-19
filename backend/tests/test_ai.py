@@ -192,11 +192,19 @@ def test_keep_block_is_only_a_valid_reference():
         assert sanitize_block(bad) is None
 
 
-def test_edit_needs_document_and_instruction(client, monkeypatch):  # noqa: F811
+def test_edit_needs_an_instruction_but_context_is_optional(client, monkeypatch):  # noqa: F811
+    import app.routers.ai as ai_router
+
     monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr(ai_router, "text_stream", fake_model('{"type":"paragraph","text":"New."}\n'))
     base = {"title": "Acids", "kind": "edit"}
-    assert client.post("/ai/generate", json={**base, "description": "make it easier"}).status_code == 422
+    # No instruction at all → refused, regardless of context.
     assert client.post("/ai/generate", json={**base, "context": "#0 paragraph: hi"}).status_code == 422
+    # An instruction with no context ("edit" an empty document, i.e. the
+    # slash menu's "Generate" adding a block from scratch) is allowed.
+    res = client.post("/ai/generate", json={**base, "description": "add a block"})
+    assert res.status_code == 200
+    assert frames(res)[-1]["t"] == "done"
 
 
 def test_edit_streams_keep_and_changed_blocks(client, monkeypatch):  # noqa: F811

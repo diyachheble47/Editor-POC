@@ -84,8 +84,12 @@ async def generate(body: GenerateRequest):
     if not gemini.is_configured():
         raise HTTPException(503, "The AI is not set up: GEMINI_API_KEY is missing on the server.")
 
-    if body.kind == "edit" and not (body.context.strip() and body.description.strip()):
-        raise HTTPException(422, "Editing needs the document and an instruction.")
+    # Empty `context` is fine for "edit" — it just means an empty document
+    # (nothing to keep), which the slash menu's "Generate" relies on to add
+    # a single new block to a brand-new document. Only the instruction
+    # itself is actually required.
+    if body.kind == "edit" and not body.description.strip():
+        raise HTTPException(422, "Editing needs an instruction.")
 
     typing_delay = int(os.getenv("AI_TYPING_DELAY_MS", "15")) / 1000
     system = build_system_prompt(body.kind)

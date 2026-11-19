@@ -121,7 +121,7 @@ export function SlashCommandPlugin() {
   const { update: updateUI } = useEditorUI()
   // "AI Agent" opens a submenu beside the list. Run from there is remembered here
   // so the normal select path can remove the typed "/agent" before starting it.
-  const pendingRunRef = useRef<{ kind: FlyoutKind; prompt: string } | null>(null)
+  const pendingRunRef = useRef<{ kind: FlyoutKind; prompt: string; allowEmpty?: boolean } | null>(null)
   const focusFlyoutRef = useRef<(() => void) | null>(null)
   // The submenu opens only when the user goes to "Agent" (hover, or arrow keys),
   // never just because it is the first item of a freshly opened menu.
@@ -422,7 +422,9 @@ export function SlashCommandPlugin() {
               focusRef={focusFlyoutRef}
               onBack={() => editor.focus()}
               onRun={(kind, prompt) => {
-                pendingRunRef.current = { kind, prompt }
+                // Only "Generate" ever runs as 'edit' from here — the three
+                // "Agent" sentences never do — so this is safe to key off kind.
+                pendingRunRef.current = { kind, prompt, allowEmpty: kind === 'edit' }
                 // Focus is in a blank; bring the editor's selection back so the typed "/agent"/"/generate" can be removed.
                 editor.focus(() => selectOptionAndCleanUp(flyoutOption))
               }}

@@ -164,6 +164,11 @@
 }
 .agent-flyout-blank::placeholder { color: var(--c-text-placeholder); }
 .agent-flyout-blank:focus { border-bottom-color: var(--c-text); }
+.agent-flyout-select {
+  flex-shrink: 0; border: 1px solid var(--c-border); border-radius: 6px; background: var(--c-surface);
+  color: inherit; font: inherit; font-size: 13px; font-weight: 600; padding: 3px 6px; cursor: pointer;
+}
+.agent-flyout-generate .agent-flyout-blank { margin-left: 2px; }
 .agent-run-enter { margin-left: 4px; opacity: 0.7; }
 .agent-flyout-run {
   display: inline-flex; align-items: center;
