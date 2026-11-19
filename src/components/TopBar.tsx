@@ -29,6 +29,7 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
   const { title, saveStatus, saveError, save, lastSaved, wordCount, aiState, stopAi, docLoading } = useDocument()
   const aiSeconds = useElapsedSeconds(aiState.status === 'generating' ? aiState.startedAt : undefined)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const saveLabel =
     saveStatus === 'saving'  ? 'Saving…' :
@@ -99,6 +100,17 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
 
         <button
           type="button"
+          className="icon-btn"
+          disabled={!editor || docLoading}
+          onClick={() => setExportOpen(true)}
+          title="Export PDF"
+          aria-label="Export PDF"
+        >
+          <ExportIcon />
+        </button>
+
+        <button
+          type="button"
           className="topbar-share-btn"
           disabled={saveStatus === 'saving' || saveStatus === 'idle' || saveStatus === 'saved' || aiState.status === 'generating' || docLoading}
           onClick={save}
@@ -164,6 +176,9 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
       {previewOpen && editor && (
         <PreviewModal sourceEditor={editor} title={title} onClose={() => setPreviewOpen(false)} />
       )}
+      {exportOpen && editor && (
+        <PreviewModal sourceEditor={editor} title={title} onClose={() => setExportOpen(false)} autoPrint />
+      )}
     </header>
   )
 }
@@ -184,6 +199,15 @@ function PreviewIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
       <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  )
+}
+
+function ExportIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4 10.5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 1.5v8M8 9.5 5 6.5M8 9.5l3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

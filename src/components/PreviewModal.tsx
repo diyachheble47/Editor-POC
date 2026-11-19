@@ -8,7 +8,7 @@
 // Lexical editor's own `editable` flag, so that flag alone wouldn't stop a
 // click from reaching them.
 
-import { Component, useEffect } from 'react'
+import { Component, useCallback, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
@@ -62,13 +62,18 @@ class PreviewErrorBoundary extends Component<{ children: ReactNode }, { failed: 
 }
 
 export function PreviewModal({
-  sourceEditor, title, onClose,
+  sourceEditor, title, onClose, autoPrint = false,
 }: {
   sourceEditor: LexicalEditor
   title: string
   onClose: () => void
+  /** TopBar's "Export PDF" button: skip straight to the print dialog instead
+   * of making the user open Preview and click a second button inside it,
+   * and close this overlay on its own once that dialog is dismissed. */
+  autoPrint?: boolean
 }) {
   useEffect(() => {
+    if (autoPrint) return // off-screen and auto-closing — nothing for Escape to close, nothing to scroll-lock behind
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
     }
@@ -79,7 +84,7 @@ export function PreviewModal({
       window.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = prevOverflow
     }
-  }, [onClose])
+  }, [onClose, autoPrint])
 
   // "Export PDF" is the browser's own print dialog pointed at "Save as PDF"
   // — not a PDF library. This preview is already a faithful, real-DOM
@@ -89,7 +94,7 @@ export function PreviewModal({
   // that into blurry, unselectable images instead. The document's current
   // theme is forced to light for the printout (ink-friendly, and dark
   // panel backgrounds print badly) and restored once the print dialog closes.
-  function handlePrint() {
+  const handlePrint = useCallback(() => {
     const root = document.documentElement
     const prevTheme = root.getAttribute('data-theme')
     root.setAttribute('data-theme', 'light')
@@ -97,23 +102,47 @@ export function PreviewModal({
       if (prevTheme) root.setAttribute('data-theme', prevTheme)
       else root.removeAttribute('data-theme')
       window.removeEventListener('afterprint', restore)
+      // TopBar's "Export PDF" never meant to leave this overlay open — it
+      // was only here to give the print layout something to render from.
+      if (autoPrint) onClose()
     }
     window.addEventListener('afterprint', restore)
     requestAnimationFrame(() => window.print())
-  }
+  }, [autoPrint, onClose])
+
+  // Autoprint fires once per mount, after the sync effect above has had a
+  // chance to land the real content (see its own "wait a tick" reasoning).
+  // React 19 StrictMode (dev only) mounts, cleans up, then mounts again —
+  // the cleanup here must reset `fired` too, or the second (real) mount
+  // sees it already true from the first (torn-down) one and never
+  // reschedules at all, so autoPrint silently never fires.
+  const firedRef = useRef(false)
+  useEffect(() => {
+    if (!autoPrint || firedRef.current) return
+    firedRef.current = true
+    const t = setTimeout(handlePrint, 50)
+    return () => { clearTimeout(t); firedRef.current = false }
+  }, [autoPrint, handlePrint])
 
   return createPortal(
-    <div className="preview-overlay" role="dialog" aria-modal="true" aria-label="Document preview">
-      <div className="preview-overlay-bar">
-        <span className="preview-overlay-badge">Preview</span>
-        <span className="preview-overlay-title">{title || 'Untitled'}</span>
-        <button type="button" className="preview-overlay-print" onClick={handlePrint}>
-          Export PDF
-        </button>
-        <button type="button" className="preview-overlay-close" onClick={onClose}>
-          Close
-        </button>
-      </div>
+    <div
+      className={`preview-overlay${autoPrint ? ' preview-overlay-autoprint' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Document preview"
+    >
+      {!autoPrint && (
+        <div className="preview-overlay-bar">
+          <span className="preview-overlay-badge">Preview</span>
+          <span className="preview-overlay-title">{title || 'Untitled'}</span>
+          <button type="button" className="preview-overlay-print" onClick={handlePrint}>
+            Export PDF
+          </button>
+          <button type="button" className="preview-overlay-close" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      )}
       <div className="preview-overlay-scroll">
         <div className="preview-overlay-page">
           <h1 className="preview-overlay-doc-title">{title || 'Untitled'}</h1>

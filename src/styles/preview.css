@@ -97,6 +97,23 @@
   position: relative;
 }
 
+/* TopBar's "Export PDF" (autoPrint): nothing to look at here, it's firing
+   the print dialog straight away — so this render exists only to give print
+   something in the DOM, off-screen rather than taking over the viewport.
+   Scoped to `screen` only: print's own layout (below) must still see this
+   as the normal, on-page `.preview-overlay`, not something positioned
+   miles off the page. */
+@media screen {
+  .preview-overlay-autoprint {
+    position: fixed;
+    inset: auto;
+    left: -9999px;
+    top: 0;
+    width: 900px;
+    height: auto;
+  }
+}
+
 .preview-overlay-error {
   color: var(--c-text-2);
   font-size: 14px;
