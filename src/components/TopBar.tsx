@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { UNDO_COMMAND, REDO_COMMAND } from 'lexical'
 import { useEditorUI } from '../editor/context/EditorUIContext'
 import { useEditorFormat } from '../editor/context/EditorFormatContext'
 import { useDocument, formatRelativeTime } from '../context/DocumentContext'
 import { useTheme } from '../context/ThemeContext'
 import { PreviewModal } from './PreviewModal'
+import { downloadDocumentHtml } from '../editor/exportHtml'
+import { downloadDocumentPdf } from '../editor/exportPdf'
 
 interface TopBarProps {
   leftOpen: boolean
@@ -23,13 +25,67 @@ function useElapsedSeconds(since: number | undefined): number {
 }
 
 export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
-  const { editor } = useEditorUI()
+  const { editor, update: updateUI } = useEditorUI()
   const { theme, toggle: toggleTheme } = useTheme()
   const { canUndo, canRedo } = useEditorFormat()
-  const { title, saveStatus, saveError, save, lastSaved, wordCount, aiState, stopAi, docLoading } = useDocument()
+  const { title, saveStatus, saveError, save, lastSaved, aiState, stopAi, docLoading } = useDocument()
   const aiSeconds = useElapsedSeconds(aiState.status === 'generating' ? aiState.startedAt : undefined)
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  // An AI error stays in the bar only for a few seconds, unless clicked away sooner.
+  const [errorVisible, setErrorVisible] = useState(true)
+  useEffect(() => {
+    setErrorVisible(true)
+    const t = setTimeout(() => setErrorVisible(false), 6000)
+    return () => clearTimeout(t)
+  }, [aiState.message])
+  const [pdfError, setPdfError] = useState<string | null>(null)
+  const pdfErrorTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(pdfErrorTimer.current), [])
+  const [shareOpen, setShareOpen] = useState(false)
+  const shareRef = useRef<HTMLDivElement>(null)
+
+  // The Share menu closes on an outside click or Escape.
+  useEffect(() => {
+    if (!shareOpen) return
+    const onDown = (e: PointerEvent) => {
+      if (shareRef.current && !shareRef.current.contains(e.target as Node)) setShareOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShareOpen(false) }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [shareOpen])
+
+  function exportAsHtml() {
+    setShareOpen(false)
+    if (!editor) return
+    try {
+      downloadDocumentHtml(editor, title)
+    } catch (err) {
+      console.error('HTML export failed', err)
+    }
+  }
+
+  async function exportAsPdf() {
+    setShareOpen(false)
+    if (!editor || pdfBusy) return
+    setPdfBusy(true)
+    setPdfError(null)
+    try {
+      await downloadDocumentPdf(editor, title)
+    } catch (err) {
+      console.error('PDF export failed', err)
+      setPdfError(err instanceof Error ? err.message : 'Could not build the PDF.')
+      window.clearTimeout(pdfErrorTimer.current)
+      pdfErrorTimer.current = window.setTimeout(() => setPdfError(null), 6000)
+    } finally {
+      setPdfBusy(false)
+    }
+  }
 
   const saveLabel =
     saveStatus === 'saving'  ? 'Saving…' :
@@ -62,19 +118,14 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
         <span className="topbar-divider" aria-hidden="true" />
 
         <nav className="topbar-breadcrumb" aria-label="Document location">
-          <span className="topbar-crumb-subject">Notebook</span>
+          <span className="topbar-crumb-subject">Editor</span>
           <span className="topbar-crumb-sep" aria-hidden="true">/</span>
           <span className="topbar-crumb-title">{title || 'Untitled'}</span>
         </nav>
       </div>
 
-      <div className="topbar-center">
-        {wordCount > 0 && (
-          <span className="topbar-wordcount" aria-label={`${wordCount} words`}>
-            {wordCount.toLocaleString()} {wordCount === 1 ? 'word' : 'words'}
-          </span>
-        )}
-      </div>
+      {/* Flexible spacer: pushes the right-hand controls to the far edge. */}
+      <div className="topbar-center" />
 
       <div className="topbar-right">
         {saveLabel && (
@@ -89,6 +140,17 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
 
         <button
           type="button"
+          className="topbar-ai-open"
+          disabled={!editor || docLoading}
+          onClick={() => updateUI({ agent: { id: Date.now() }, activeMath: null, activeModel3d: null })}
+          title="Open the AI assistant to edit this document"
+          aria-label="Open AI assistant"
+        >
+          ✨ AI
+        </button>
+
+        <button
+          type="button"
           className="icon-btn"
           disabled={!editor || docLoading}
           onClick={() => setPreviewOpen(true)}
@@ -97,29 +159,6 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
         >
           <PreviewIcon />
         </button>
-
-        <button
-          type="button"
-          className="icon-btn"
-          disabled={!editor || docLoading}
-          onClick={() => setExportOpen(true)}
-          title="Export PDF"
-          aria-label="Export PDF"
-        >
-          <ExportIcon />
-        </button>
-
-        <button
-          type="button"
-          className="topbar-share-btn"
-          disabled={saveStatus === 'saving' || saveStatus === 'idle' || saveStatus === 'saved' || aiState.status === 'generating' || docLoading}
-          onClick={save}
-          title={aiState.status === 'generating' ? 'Wait for the AI to finish, then save' : 'Save (Ctrl+S)'}
-        >
-          {saveStatus === 'saving' ? 'Saving…' : 'Save'}
-        </button>
-
-        <span className="topbar-divider" aria-hidden="true" />
 
         <button
           type="button"
@@ -152,8 +191,8 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
             <button type="button" className="topbar-ai-stop" onClick={stopAi}>Stop</button>
           </span>
         )}
-        {aiState.status === 'error' && aiState.message && (
-          <span className="topbar-sync-status conflict" role="alert">{aiState.message}</span>
+        {aiState.status === 'error' && aiState.message && errorVisible && (
+          <span className="topbar-sync-status conflict" role="alert" title="Click to dismiss" onClick={() => setErrorVisible(false)}>{aiState.message}</span>
         )}
 
         <button
@@ -168,16 +207,45 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
 
         <span className="topbar-divider" aria-hidden="true" />
 
-        <button type="button" className="topbar-share-btn">
-          Share
+        <div className="topbar-share-wrap" ref={shareRef}>
+          <button
+            type="button"
+            className="topbar-secondary-btn"
+            aria-haspopup="menu"
+            aria-expanded={shareOpen}
+            onClick={() => setShareOpen(o => !o)}
+          >
+            Share
+          </button>
+          {shareOpen && (
+            <div className="topbar-share-menu" role="menu" aria-label="Share">
+              <button type="button" role="menuitem" className="topbar-share-item" disabled={pdfBusy} onClick={exportAsPdf}>
+                Export as PDF
+              </button>
+              <button type="button" role="menuitem" className="topbar-share-item" onClick={exportAsHtml}>
+                Export as HTML
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Save is the one primary action, kept at the far right. */}
+        <button
+          type="button"
+          className="topbar-share-btn"
+          disabled={saveStatus === 'saving' || saveStatus === 'idle' || saveStatus === 'saved' || aiState.status === 'generating' || docLoading}
+          onClick={save}
+          title={aiState.status === 'generating' ? 'Wait for the AI to finish, then save' : 'Save (Ctrl+S)'}
+        >
+          {saveStatus === 'saving' ? 'Saving…' : 'Save'}
         </button>
       </div>
 
       {previewOpen && editor && (
         <PreviewModal sourceEditor={editor} title={title} onClose={() => setPreviewOpen(false)} />
       )}
-      {exportOpen && editor && (
-        <PreviewModal sourceEditor={editor} title={title} onClose={() => setExportOpen(false)} autoPrint />
+      {(pdfBusy || pdfError) && (
+        <div className="topbar-toast" role="status">{pdfBusy ? 'Building PDF…' : pdfError}</div>
       )}
     </header>
   )
@@ -199,15 +267,6 @@ function PreviewIcon() {
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
       <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.4" />
-    </svg>
-  )
-}
-
-function ExportIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M4 10.5v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8 1.5v8M8 9.5 5 6.5M8 9.5l3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

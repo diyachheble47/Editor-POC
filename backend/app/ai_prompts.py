@@ -30,6 +30,9 @@ The allowed blocks are exactly these:
 {"type":"quiz","questions":[{"q":"What is 2+2?","options":["3","4","5"],"answer":1,"why":"Two plus two is four."}]}
       multiple-choice questions that show right or wrong when clicked. answer is the 0-based index of the
       correct option. 2-6 options each, 3-5 questions, a one-line why for each.
+{"type":"drawing","shapes":[{"kind":"rect","x":40,"y":40,"w":160,"h":80,"text":"Heart"},{"kind":"arrow","x":200,"y":80,"w":120,"h":0}]}
+      a diagram drawn by hand-style shapes on a canvas about 800 x 400 pixels. kind is rect, ellipse, diamond,
+      arrow (from x,y to x+w,y+h) or text. x and y are the top-left corner; text is an optional label. At most 40 shapes.
 {"type":"matrix","rows":[["1","0"],["0","1"]]}        a maths matrix, at most 6 x 6
 {"type":"graph","functions":["x^2","2*x+1"],"points":[[1,1],[2,4]],"connect":false}
       a coordinate graph from -10 to 10 on both axes. functions use x, + - * / ^ and
@@ -118,7 +121,7 @@ Rules for variety:
 - Never write more than two paragraphs in a row: break them up with a table, callout, equation,
   list, chart, flowchart, graph or other block.
 - Separate major parts with a divider block.
-- Aim for AT LEAST 40 blocks and at least 3 tables. Within the block types that are relevant, use
+- Aim for AT LEAST 70 blocks, about 1,800 words in total (a full 3-4 printed pages), and at least 4 tables. Within the block types that are relevant, use
   several different ones and show different content each time (two different charts, a series and
   a parallel circuit, two different molecules), but never repeat a diagram just to fill space.
 """
@@ -133,7 +136,7 @@ KINDS = {
         "(include the graph, chart or flowchart, and a circuit, molecule or geometry only if the topic is about it), short answer, and "
         "two or three problem-solving questions with equations; a challenge question in a tip "
         "callout; end with a divider and an 'Answer key' section with the answers (a table works well). "
-        "Aim for 45-60 blocks.",
+        "Aim for 80-100 blocks, about 2,000 words: a full 3-4 page workbook.",
     ),
     "lesson_plan": (
         "a teacher's LESSON PLAN",
@@ -144,7 +147,7 @@ KINDS = {
         "and the diagrams, graphs, charts or flowcharts to draw on the board), guided activity, "
         "independent practice, assessment/exit ticket with questions; a rubric or success-criteria "
         "table; differentiation (a support / extension table); common misconceptions in warning "
-        "callouts; homework. Aim for 40-55 blocks.",
+        "callouts; homework. Aim for 60-80 blocks, about 1,500 words.",
     ),
     "lesson": (
         "a student LESSON BUILDER output (the explanatory lesson content itself)",
@@ -153,7 +156,7 @@ KINDS = {
         "visual (chart, flowchart, graph, table or a topic-specific diagram, as the content needs); a comparison "
         "or summary table for each group of related ideas; worked examples with step-by-step "
         "equations; callouts for key points, tips and common mistakes; a summary; tabs for any process with steps; a final "
-        "check-your-understanding section holding a quiz block (3-5 questions). Aim for 40-55 blocks.",
+        "check-your-understanding section holding a quiz block (3-5 questions). Aim for 80-100 blocks, about 2,000 words: a full 3-4 printed pages.",
     ),
 }
 
@@ -223,21 +226,30 @@ EDIT_SYSTEM = EDIT_SYSTEM + _BLOCK_TYPES + EDIT_RULES
 
 
 HTML_SYSTEM = """\
-You write one small interactive teaching widget for a document editor, as a single self-contained HTML page.
+You write one interactive HTML activity for a document editor: a simulation, a demo, a game or a quiz that a
+student uses inside a lesson. It is one self-contained HTML page, shown in a sandboxed frame about 700px wide
+that grows to fit its content.
 
 Output ONLY the HTML, no explanation and no code fences.
 
 Rules:
 - One page: inline <style> and <script>, plain JavaScript. No external files, no CDN, no network calls
   (fetch, XMLHttpRequest, WebSocket), no iframes, no cookies or localStorage.
-- Under 8000 characters. Keep it simple and robust: it must work the first time.
-- The page sits inside a document column about 700px wide and is sized to its content. Do not use vh units
-  or fixed page heights, and do not add your own page background.
+- Up to about 15000 characters. Make it complete and polished, but keep it to one clear idea.
+- Sizing: give the main visual a fixed pixel height (for example 420px) and a width of 100%. Do not use vh or
+  vw units, and do not set height:100% on the page, because the frame sizes itself to the content.
+- Design it well: a clear title, a visual stage that really draws the idea (SVG, canvas or styled elements),
+  labelled controls (sliders, buttons, toggles) that show their current values, and a live readout that explains
+  what is happening right now. Use CSS transitions or requestAnimationFrame for smooth motion where it helps
+  a student see the cause and effect. Start the activity on load, so the first view is already alive.
+- Put a scene background (dark space, a grid, a board) on an inner panel with rounded corners, never on body or
+  html. Do not set a full page background.
 - Use the theme colours with fallbacks so it fits light and dark: var(--c-text, #1a1a1a), var(--c-surface, #fff),
   var(--c-border, #e8e8e6), var(--c-accent, #6e62c8), var(--c-accent-bg, #f0eeff), var(--c-success, #16a34a),
-  var(--c-danger, #dc2626).
+  var(--c-danger, #dc2626). Use the accent for the thing the student should watch. Scene colours may be fixed.
 - Work by mouse and keyboard, with real <button>s and labels. Do not use alert, confirm or prompt.
-- It must teach something real about what the teacher asked. Show the result clearly (a number, a drawing, a message).
+- It must be scientifically or factually accurate: correct formulas, units, values and labels, and it must teach
+  what the teacher asked. Show the result clearly.
 - If the teacher gives you existing code, change only what they ask and return the whole page again.
 - You may report what a student does with: window.tnb && tnb.emit("answer", { question: "...", correct: true }).
   Call it when a student answers, submits or finishes (a short name and a small object), nothing else.

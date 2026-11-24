@@ -2,15 +2,15 @@
 // now — a second, throwaway Lexical editor fed a snapshot of the real one's
 // state (same node set, so every custom block decorates identically), with
 // none of the editing plugins (no slash menu, no drag handles, no save).
-// `pointer-events: none` on the rendered content is what actually makes it
-// inert — several blocks (Mermaid's click-to-edit, ResizeFrame's handles,
-// spreadsheet cells…) listen for pointer events themselves regardless of the
-// Lexical editor's own `editable` flag, so that flag alone wouldn't stop a
-// click from reaching them.
+// Blocks stay interactive here (quiz answers, 3D rotate/zoom, diagrams, HTML
+// activities). ReadOnlyContext stops them from opening their editing UI, and
+// the resize corners are hidden (see preview.css).
+import { ReadOnlyContext } from '../editor/nodes/_shared/readOnlyContext'
 
 import { Component, useCallback, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { PREPARE_PRINT_EVENT } from '../editor/nodes/model3d/Model3DViewer'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
@@ -61,6 +61,24 @@ class PreviewErrorBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
+// Printing lays out off-screen, so 3D models only build once told to. Wait until each
+// one in the preview has its snapshot, but never longer than this (a model that fails
+// to load shouldn't block the print forever).
+const PRINT_WAIT_MS = 8000
+
+function waitForPrintReady(): Promise<void> {
+  window.dispatchEvent(new Event(PREPARE_PRINT_EVENT))
+  return new Promise(resolve => {
+    const deadline = Date.now() + PRINT_WAIT_MS
+    const check = () => {
+      const pending = document.querySelector('.preview-overlay [data-model3d]:not([data-print-ready])')
+      if (!pending || Date.now() > deadline) resolve()
+      else setTimeout(check, 100)
+    }
+    check()
+  })
+}
+
 export function PreviewModal({
   sourceEditor, title, onClose, autoPrint = false,
 }: {
@@ -107,7 +125,7 @@ export function PreviewModal({
       if (autoPrint) onClose()
     }
     window.addEventListener('afterprint', restore)
-    requestAnimationFrame(() => window.print())
+    void waitForPrintReady().then(() => requestAnimationFrame(() => window.print()))
   }, [autoPrint, onClose])
 
   // Autoprint fires once per mount, after the sync effect above has had a
@@ -135,9 +153,6 @@ export function PreviewModal({
         <div className="preview-overlay-bar">
           <span className="preview-overlay-badge">Preview</span>
           <span className="preview-overlay-title">{title || 'Untitled'}</span>
-          <button type="button" className="preview-overlay-print" onClick={handlePrint}>
-            Export PDF
-          </button>
           <button type="button" className="preview-overlay-close" onClick={onClose}>
             Close
           </button>
@@ -147,6 +162,7 @@ export function PreviewModal({
         <div className="preview-overlay-page">
           <h1 className="preview-overlay-doc-title">{title || 'Untitled'}</h1>
           <PreviewErrorBoundary>
+            <ReadOnlyContext.Provider value={true}>
             <LexicalComposer initialConfig={{ ...editorConfig, namespace: 'doc-preview', editable: false }}>
               <RichTextPlugin
                 contentEditable={<ContentEditable className="editor-input preview-overlay-input" aria-label="Document preview" />}
@@ -160,6 +176,7 @@ export function PreviewModal({
               <SectionCardsPlugin />
               <PreviewSync sourceEditor={sourceEditor} />
             </LexicalComposer>
+            </ReadOnlyContext.Provider>
           </PreviewErrorBoundary>
         </div>
       </div>

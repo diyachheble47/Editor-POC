@@ -27,7 +27,7 @@
   position: absolute;
   bottom: 4px;
   right: 8px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--c-text-3);
   pointer-events: none;
 }
@@ -82,7 +82,7 @@
 }
 
 .math-editor-badge {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.03em;
   padding: 2px 7px;
@@ -114,7 +114,7 @@
 }
 
 .math-editor-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--c-text-3);
   text-transform: uppercase;
@@ -153,7 +153,7 @@
 }
 
 .math-symbol-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--c-text-3);
   text-transform: uppercase;
@@ -188,7 +188,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--c-text-2);
   cursor: pointer;
   user-select: none;

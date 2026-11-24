@@ -189,6 +189,17 @@ export type AiBlock =
   | { type: 'flowchart'; code: string }
   | { type: 'chart'; code: string }
   | { type: 'circuit'; parts: { id: string; type: string; value?: string; closed?: boolean }[]; wires: [string, string][] }
+  | { type: 'drawing'; shapes: AiShape[] }
+
+/** One shape of a drawing, in canvas pixels. `arrow` runs from (x, y) to (x + w, y + h). */
+export interface AiShape {
+  kind: 'rect' | 'ellipse' | 'diamond' | 'arrow' | 'text'
+  x: number
+  y: number
+  w: number
+  h: number
+  text?: string
+}
 
 export type AiEvent =
   | { t: 'start' }
@@ -243,6 +254,8 @@ export interface AiChatMessage {
   peek?: string
   at: number
 }
+
+export const MAX_AI_CHAT_MESSAGES = 100
 
 export async function getAiChat(docId: string): Promise<AiChatMessage[]> {
   const res = await request(`/documents/${encodeURIComponent(docId)}/ai-chat`)

@@ -35,6 +35,9 @@ async def gemini_text_stream(system: str, user: str) -> AsyncIterator[str]:
         config=types.GenerateContentConfig(
             system_instruction=system,
             temperature=0.7,
+            # A 3-4 page document is far more than the default output allowance; cutting off mid-stream
+            # would silently drop its last sections.
+            max_output_tokens=32768,
             # The model "thinks" before its first word, which can take 30s+ and
             # looks like a hang. Writing a lesson doesn't need much of it.
             thinking_config=types.ThinkingConfig(thinking_level=_thinking_level()),

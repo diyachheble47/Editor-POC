@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react'
 import type { Connection, NodeChange, EdgeChange, NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { useReadOnly } from '../_shared/readOnlyContext'
 import { PartSymbol, PART_LABELS, PART_TYPES, defaultValue } from './symbols'
 import type { PartType } from './symbols'
 import { $isCircuitNode } from './CircuitNode'
@@ -73,7 +74,8 @@ function CircuitCanvas({
   const [wires, setWires] = useState<CircuitWire[]>(initialWires)
   // Palette, dots and the grid show only while editing; a fresh empty block
   // starts in edit mode, and clicking outside returns to the clean view.
-  const [editing, setEditing] = useState(initialParts.length === 0)
+  const readOnly = useReadOnly() // Preview: switches still toggle, but the palette never opens
+  const [editing, setEditing] = useState(initialParts.length === 0 && !readOnly)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -191,7 +193,7 @@ function CircuitCanvas({
         className={`circuit-block${editing ? ' circuit-editing' : ''}`}
         contentEditable={false}
         onKeyDown={handleCanvasKeyDown}
-        onClick={() => { if (!editing) setEditing(true) }}
+        onClick={() => { if (!editing && !readOnly) setEditing(true) }}
       >
         {editing && <div className="circuit-palette">
           {PART_TYPES.map(type => (

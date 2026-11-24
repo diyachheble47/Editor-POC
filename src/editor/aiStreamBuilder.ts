@@ -17,6 +17,8 @@ import { TocNode } from './nodes/toc/TocNode'
 import { TabsNode } from './nodes/tabs/TabsNode'
 import { QuizNode } from './nodes/quiz/QuizNode'
 import { HtmlNode } from './nodes/html/HtmlNode'
+import { ExcalidrawNode } from './nodes/excalidraw/ExcalidrawNode'
+import { drawingElements } from './ai/drawingShapes'
 import { GraphNode } from './nodes/graph/GraphNode'
 import { GeometryNode } from './nodes/geometry/GeometryNode'
 import type { GeoEdge } from './nodes/geometry/GeometryNode'
@@ -192,6 +194,7 @@ export function $createNodeFromAiBlock(block: AiBlock): LexicalNode {
     case 'circuit': return circuitFrom(block)
     case 'flowchart': return $createMermaidNode(block.code)
     case 'chart': return $createMermaidNode(block.code)
+    case 'drawing': return new ExcalidrawNode(crypto.randomUUID(), drawingElements(block.shapes), { viewBackgroundColor: 'transparent' }, 'Drawing')
   }
 }
 
@@ -224,7 +227,7 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
           skipped++
           openKey = null
         }
-      }, { discrete: true })
+      }, { discrete: true, tag: 'skip-scroll-into-view' })
     },
     /** Leaves an empty paragraph after the content to keep typing in. */
     finish() {
@@ -233,7 +236,7 @@ export function createAiStreamBuilder(editor: LexicalEditor) {
         if (!$isElementNode(last) || last.getType() !== 'paragraph' || !last.isEmpty()) {
           $getRoot().append($createParagraphNode())
         }
-      }, { discrete: true })
+      }, { discrete: true, tag: 'skip-scroll-into-view' })
     },
   }
 }

@@ -14,8 +14,10 @@ import type { AgentSession } from '../editor/context/EditorUIContext'
 import { editorConfig } from '../editor/EditorConfig'
 import { createAiStreamBuilder } from '../editor/aiStreamBuilder'
 import { buildEditContext, isDocEmpty } from '../editor/ai/editContext'
-import { ApiError, getAiChat, getAiStatus, saveAiChat, streamAiDocument } from '../storage/api'
+import { ApiError, getAiChat, getAiStatus, MAX_AI_CHAT_MESSAGES, saveAiChat, streamAiDocument } from '../storage/api'
 import type { AiKind, AiRequest } from '../storage/api'
+import { AI_CHAT_EVENT } from '../editor/ai/generateBlock'
+import type { AiChatEvent } from '../editor/ai/generateBlock'
 
 function blockLabel(block: AiBlock): string {
   switch (block.type) {
@@ -27,17 +29,17 @@ function blockLabel(block: AiBlock): string {
     case 'list': return block.ordered ? 'Numbered list' : 'Bullet list'
     case 'table': return `Table (${block.rows.length} rows)`
     case 'circuit': return 'Circuit'
+    case 'drawing': return 'Drawing'
     case 'molecule': return `Molecule (${block.name})`
     case 'graph': return 'Graph'
     default: return block.type[0].toUpperCase() + block.type.slice(1)
   }
 }
 
+// The chat only edits the open document. Workbook, lesson builder and lesson
+// plan are not offered here (they are separate flows, not chat modes).
 const MODES: { kind: AiKind; label: string; hint: string; placeholder: string }[] = [
   { kind: 'edit', label: 'Edit document', hint: 'Change this document as you describe', placeholder: 'What should change? e.g. make question 3 easier, add a chart of the data…' },
-  { kind: 'workbook', label: 'Workbook', hint: 'Practice questions and an answer key', placeholder: 'Topic, class, what to cover…' },
-  { kind: 'lesson', label: 'Lesson builder', hint: 'The lesson itself', placeholder: 'Topic, class, what to cover…' },
-  { kind: 'lesson_plan', label: 'Lesson plan', hint: 'Timed plan for the teacher', placeholder: 'Topic, class, duration…' },
 ]
 const KIND_NAME: Record<AiKind, string> = { edit: 'Edit', workbook: 'Workbook', lesson: 'Lesson builder', lesson_plan: 'Lesson plan' }
 
@@ -61,7 +63,6 @@ type Phase = 'idle' | 'generating' | 'review'
 type Pending = { how: 'append' | 'replace'; msgId: string; snapshot: string; /** Edit of a selection: only these blocks are replaced. */ keys?: string[] }
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
-const MAX_MESSAGES = 100
 
 // Hands the preview editor to the panel (it lives inside its own composer).
 function CaptureEditor({ onEditor }: { onEditor: (e: LexicalEditor) => void }) {
@@ -73,10 +74,6 @@ function CaptureEditor({ onEditor }: { onEditor: (e: LexicalEditor) => void }) {
 /** The first part of what an editor holds, as one short plain-text snippet. */
 function peekOf(editor: LexicalEditor): string {
   return editor.getEditorState().read(() => $getRoot().getTextContent()).replace(/\s+/g, ' ').trim().slice(0, 400)
-}
-
-function docText(editor: LexicalEditor): string {
-  return editor.getEditorState().read(() => $getRoot().getTextContent().replace(/\n{2,}/g, '\n').slice(0, 30000))
 }
 
 /**
@@ -96,7 +93,6 @@ export function AgentPanel({ session }: { session: AgentSession }) {
 
   const [messages, setMessages] = useState<AiChatMessage[]>([])
   const [loaded, setLoaded] = useState(false)
-  const [mode, setMode] = useState<AiKind>(session.run?.kind ?? 'edit')
   const [draft, setDraft] = useState('')
   // Opened from selected text: the edit applies to these blocks only.
   const [scope, setScope] = useState(session.scope ?? null)
@@ -121,7 +117,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
 
   const push = useCallback((...added: AiChatMessage[]) => {
     changedRef.current = true
-    setMessages(prev => [...prev, ...added].slice(-MAX_MESSAGES))
+    setMessages(prev => [...prev, ...added].slice(-MAX_AI_CHAT_MESSAGES))
   }, [])
   const patch = useCallback((id: string, change: Partial<AiChatMessage>) => {
     changedRef.current = true
@@ -132,7 +128,6 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   useEffect(() => {
     if (!session.scope) return
     setScope(session.scope)
-    setMode('edit')
     inputRef.current?.focus()
   }, [session.scope])
 
@@ -152,6 +147,19 @@ export function AgentPanel({ session }: { session: AgentSession }) {
       .finally(() => { if (live) setLoaded(true) })
     return () => { live = false }
   }, [])
+
+  // Slash-menu Generate runs outside this panel; its result lands here too so the chat has the full history.
+  useEffect(() => {
+    if (!loaded) return
+    const onChat = (e: Event) => {
+      const detail = (e as CustomEvent<AiChatEvent>).detail
+      if (detail.docId !== docIdRef.current) return
+      detail.handled = true
+      push(...detail.messages)
+    }
+    window.addEventListener(AI_CHAT_EVENT, onChat)
+    return () => window.removeEventListener(AI_CHAT_EVENT, onChat)
+  }, [loaded, push])
 
   // Save the conversation shortly after it changes, and once more when the panel goes away.
   useEffect(() => {
@@ -210,7 +218,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     const asked: AiChatMessage = { id: uid(), role: 'user', text: scoped ? `On: “${scoped.text}”\n${prompt}` : prompt, kind, at: Date.now() }
 
     if (kind === 'edit' && empty && !allowEmptyEdit) {
-      push(asked, { id: uid(), role: 'assistant', text: 'The document is empty, so there is nothing to edit yet. Pick Workbook, Lesson builder or Lesson plan to create something.', status: 'error', at: Date.now() })
+      push(asked, { id: uid(), role: 'assistant', text: 'The document is empty, so there is nothing to edit yet. Add some content first, then ask for changes.', status: 'error', at: Date.now() })
       return
     }
     // The selected blocks that still exist (the document may have changed since).
@@ -235,7 +243,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
           description: scoped ? `${prompt}\n\nThe teacher selected this text. Apply the instruction to the blocks given (the selected part) only: "${scoped.text}"` : prompt }
       : direct
         ? { title: prompt.slice(0, 120), description: prompt.length > 120 ? prompt : '', kind }
-        : { title: docTitle.trim() || 'Untitled', description: prompt, context: docText(mainEditor), kind }
+        : { title: docTitle.trim() || 'Untitled', description: prompt, kind }
 
     const ai = new AbortController()
     abortRef.current = ai
@@ -255,7 +263,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
       $getRoot().clear()
       // Create requests open with a small kicker ("WORKBOOK", "LESSON PLAN"), not a heading.
       if (kind !== 'edit') $getRoot().append(kindKickerNode(KIND_NAME[kind]))
-    }, { discrete: true })
+    }, { discrete: true, tag: 'skip-scroll-into-view' })
 
     let failure: string | null = null
     let newBlocks = 0 // non-"keep" blocks actually started, only tracked/capped when singleBlock
@@ -272,7 +280,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
             if (original) {
               target.update(() => {
                 try { $getRoot().append($parseSerializedNode(original)) } catch { /* left out */ }
-              }, { discrete: true })
+              }, { discrete: true, tag: 'skip-scroll-into-view' })
             }
             return
           }
@@ -316,7 +324,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
       return
     }
     if (direct) {
-      push({ id: uid(), role: 'assistant', kind, status: 'written', at: Date.now(), peek: peekOf(mainEditor),
+      push({ id: uid(), role: 'assistant', kind, status: 'written', at: Date.now(),
         text: `${KIND_NAME[kind]} written to the document (${n} block${s}).${failure ? ` Stopped early: ${failure}` : stopped ? ' Stopped early.' : ' Review it, then press Save.'}` })
       setPhase('idle')
       return
@@ -360,7 +368,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
           try { old[0].insertBefore($parseSerializedNode(json)) } catch { /* a block that can't be rebuilt is left out */ }
         }
         for (const n of old) n.remove()
-      }, { discrete: true })
+      }, { discrete: true, tag: ['skip-dom-selection', 'skip-scroll-into-view'] })
       setScope(null)
     } else {
       mainEditor.update(() => {
@@ -376,11 +384,13 @@ export function AgentPanel({ session }: { session: AgentSession }) {
           try { root.append($parseSerializedNode(json)) } catch { /* a block that can't be rebuilt is left out */ }
         }
         root.append($createParagraphNode())
-      }, { discrete: true })
+      }, { discrete: true, tag: ['skip-dom-selection', 'skip-scroll-into-view'] })
     }
     markDirty()
     patch(pending.msgId, { status: 'accepted' })
     finishReview()
+    // Accepting changes the document, but the person is still typing to the AI: keep the cursor here.
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
   }
 
   function decline() {
@@ -396,16 +406,19 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     setPhase('idle')
   }
 
-  const effectiveMode: AiKind = mode === 'edit' && docEmpty ? 'lesson' : mode
-  const modeDef = MODES.find(m => m.kind === effectiveMode) ?? MODES[1]
-  const busy = phase !== 'idle'
+  // Always an edit: on an empty document the edit writes the new content straight in (as Generate does).
+  const effectiveMode: AiKind = 'edit'
+  const modeDef = MODES[0]
+  // Waiting on Accept / Decline doesn't lock the composer: a new instruction just replaces that result.
+  const busy = phase === 'generating'
   const canSend = loaded && !busy && configured !== false && draft.trim().length > 0
 
   function submit() {
     if (!canSend) return
     const text = draft
     setDraft('')
-    void send(effectiveMode, text)
+    if (phase === 'review') decline()
+    void send(effectiveMode, text, true)
   }
 
   const showPreview = phase === 'review' || (phase === 'generating' && !writesToDoc)
@@ -425,7 +438,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
               : 'Ask the AI to edit this document, or to create something new from it. Nothing changes until you accept.'}</p>
             <ul>
               {docEmpty
-                ? <><li>Workbook for acids, bases and salts, class 10</li><li>Lesson plan for photosynthesis, 40 minutes</li></>
+                ? <><li>A heading and a short introduction</li><li>A quiz with three questions</li></>
                 : <><li>Make the questions easier and add an answer key</li><li>Add a chart comparing the data in the table</li></>}
             </ul>
           </div>
@@ -494,28 +507,11 @@ export function AgentPanel({ session }: { session: AgentSession }) {
             <button type="button" className="agent-scope-x" onClick={() => setScope(null)} aria-label="Edit the whole document instead" disabled={busy}>✕</button>
           </div>
         )}
-        <div className="agent-modes" role="radiogroup" aria-label="What should the agent do">
-          {MODES.filter(m => m.kind !== 'edit' || !docEmpty).map(m => (
-            <button
-              key={m.kind}
-              type="button"
-              role="radio"
-              aria-checked={effectiveMode === m.kind}
-              className={`agent-mode${effectiveMode === m.kind ? ' selected' : ''}`}
-              title={m.hint}
-              disabled={busy}
-              onClick={() => { setMode(m.kind); if (m.kind !== 'edit') setScope(null) }}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
         <div className="agent-composer-field">
           <textarea
             value={draft}
             rows={2}
             maxLength={2000}
-            disabled={busy}
             ref={inputRef}
             placeholder={scope && effectiveMode === 'edit' ? 'What should change in the selection? e.g. make it simpler, add an example…' : modeDef.placeholder}
             onChange={e => setDraft(e.target.value)}

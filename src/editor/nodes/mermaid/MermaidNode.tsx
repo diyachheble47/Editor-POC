@@ -12,11 +12,14 @@ import { useTheme } from '../../../context/ThemeContext'
 import { renderMermaid } from './mermaidRender'
 import { MERMAID_TEMPLATES } from './templates'
 
-export type SerializedMermaidNode = Spread<{ code: string; width: number }, SerializedLexicalNode>
+export type SerializedMermaidNode = Spread<{ code: string; width: number; height?: number | null }, SerializedLexicalNode>
 
 const MAX_CODE = 20000
 const DEFAULT_CODE = MERMAID_TEMPLATES[0].code
 const DEFAULT_WIDTH = 480
+// Editing box height when the user has not chosen one. Fixed (not the diagram's
+// height) so typing never moves the text box; the user can drag it taller.
+const DEFAULT_EDIT_HEIGHT = 280
 
 /** Drawing for `code`; keeps the last good drawing while the text has errors. */
 function useDiagram(code: string, active: boolean) {
@@ -80,7 +83,9 @@ function useFitDiagram(boxRef: React.RefObject<HTMLDivElement | null>, svg: stri
       const vbH = vb?.height || natural.height
       if (!vbW || !vbH) return
       const pad = 28 // .mm-view's 14px padding, both sides
-      const scale = Math.min(1, (box.clientWidth - pad) / vbW, (box.clientHeight - pad) / vbH)
+      // No upper cap of 1: a box the user made bigger should enlarge the diagram too.
+      const scale = Math.min((box.clientWidth - pad) / vbW, (box.clientHeight - pad) / vbH)
+      if (!Number.isFinite(scale) || scale <= 0) return
       svgEl.style.width = `${vbW * scale}px`
       svgEl.style.height = `${vbH * scale}px`
     }
@@ -91,11 +96,13 @@ function useFitDiagram(boxRef: React.RefObject<HTMLDivElement | null>, svg: stri
   }, [boxRef, svg, active])
 }
 
-function MermaidComponent({ nodeKey, code, width }: { nodeKey: NodeKey; code: string; width: number }) {
-  const { data, change, rootRef, editing, setEditing } = useBlockData<{ code: string; width: number }>(
+type MermaidData = { code: string; width: number; height: number | null }
+
+function MermaidComponent({ nodeKey, code, width, height }: { nodeKey: NodeKey; code: string; width: number; height: number | null }) {
+  const { data, change, rootRef, editing, setEditing } = useBlockData<MermaidData>(
     nodeKey,
-    { code, width },
-    (node, d) => { if (node instanceof MermaidNode) { node.setCode(d.code); node.setWidth(d.width) } },
+    { code, width, height },
+    (node, d) => { if (node instanceof MermaidNode) { node.setCode(d.code); node.setWidth(d.width); node.setHeight(d.height) } },
   )
   const { ref: viewRef, near } = useNearViewport()
 
@@ -123,7 +130,7 @@ function MermaidComponent({ nodeKey, code, width }: { nodeKey: NodeKey; code: st
 
   useEffect(() => {
     if (liveCode === data.code) return
-    const t = setTimeout(() => change({ code: liveCode, width: data.width }), 300)
+    const t = setTimeout(() => change({ ...data, code: liveCode }), 300)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveCode])
@@ -131,18 +138,20 @@ function MermaidComponent({ nodeKey, code, width }: { nodeKey: NodeKey; code: st
   // instead of leaving the last keystroke or two riding on the debounce above.
   useEffect(() => {
     if (editing) return
-    if (liveCode !== data.code) change({ code: liveCode, width: data.width })
+    if (liveCode !== data.code) change({ ...data, code: liveCode })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing])
 
   const { svg, error, busy } = useDiagram(liveCode, near || editing)
   const boxRef = useRef<HTMLDivElement>(null)
-  useFitDiagram(boxRef, svg, editing)
+  // Fit whenever the box has a size the user chose (or is being edited), so the
+  // diagram always scales to the box instead of overflowing or being cropped.
+  useFitDiagram(boxRef, svg, editing || data.height != null)
 
   function pickTemplate(templateCode: string) {
     if (codeRef.current) codeRef.current.value = templateCode
     setLiveCode(templateCode)
-    change({ code: templateCode, width: data.width })
+    change({ ...data, code: templateCode })
   }
 
   const diagram = svg
@@ -161,19 +170,29 @@ function MermaidComponent({ nodeKey, code, width }: { nodeKey: NodeKey; code: st
           the cursor. The diagram itself is shrunk to fit (useFitDiagram), so
           it always stays fully visible, never cropped. Reading view (not
           editing) is resizable from its corners instead. */}
-      {editing ? (
-        <div className="mm-view mm-view-fixed" ref={boxRef}>
+      {/* One frame for both modes: its corners resize width and height, and
+          they stay available while editing (the editing box gets a stored or
+          default height, so typing never changes it). */}
+      <ResizeFrame
+        width={data.width}
+        height={editing ? (data.height ?? DEFAULT_EDIT_HEIGHT) : (data.height ?? undefined)}
+        min={240}
+        max={1200}
+        minHeight={160}
+        maxHeight={1600}
+        resizeHeight
+        onCommit={(w, h) => change({ ...data, width: w, height: h ?? data.height })}
+      >
+        <div
+          className={`mm-view${editing ? ' mm-view-fixed' : ''}${data.height != null ? ' mm-view-fill' : ''}`}
+          ref={boxRef}
+          onClick={editing ? undefined : () => setEditing(true)}
+          title={editing ? undefined : 'Click to edit'}
+        >
           {diagram}
           {error && <div className="mm-error" role="alert">{error}</div>}
         </div>
-      ) : (
-        <ResizeFrame width={data.width} min={240} max={1200} onCommit={w => change({ code: data.code, width: w })}>
-          <div className="mm-view" onClick={() => setEditing(true)} title="Click to edit">
-            {diagram}
-            {error && <div className="mm-error" role="alert">{error}</div>}
-          </div>
-        </ResizeFrame>
-      )}
+      </ResizeFrame>
 
       {editing && (
         <div className="mm-editor">
@@ -213,30 +232,37 @@ function MermaidComponent({ nodeKey, code, width }: { nodeKey: NodeKey; code: st
 export class MermaidNode extends DecoratorNode<React.ReactElement> {
   __code: string
   __width: number
+  __height: number | null // null = natural height (reading) / default box (editing)
 
   static getType(): string { return 'mermaid' }
-  static clone(node: MermaidNode): MermaidNode { return new MermaidNode(node.__code, node.__width, node.__key) }
+  static clone(node: MermaidNode): MermaidNode {
+    return new MermaidNode(node.__code, node.__width, node.__height, node.__key)
+  }
 
-  constructor(code = DEFAULT_CODE, width = DEFAULT_WIDTH, key?: NodeKey) {
+  constructor(code = DEFAULT_CODE, width = DEFAULT_WIDTH, height: number | null = null, key?: NodeKey) {
     super(key)
     this.__code = code
     this.__width = width
+    this.__height = height
   }
 
-  exportJSON(): SerializedMermaidNode { return { type: 'mermaid', version: 1, code: this.__code, width: this.__width } }
+  exportJSON(): SerializedMermaidNode {
+    return { type: 'mermaid', version: 1, code: this.__code, width: this.__width, height: this.__height }
+  }
   static importJSON(s: SerializedMermaidNode): MermaidNode {
-    return new MermaidNode(String(s.code ?? '').slice(0, MAX_CODE), s.width ?? DEFAULT_WIDTH)
+    return new MermaidNode(String(s.code ?? '').slice(0, MAX_CODE), s.width ?? DEFAULT_WIDTH, s.height ?? null)
   }
 
   setCode(code: string): void { this.getWritable().__code = code }
   setWidth(width: number): void { this.getWritable().__width = width }
+  setHeight(height: number | null): void { this.getWritable().__height = height }
 
   isInline(): boolean { return false }
   createDOM(_config: EditorConfig): HTMLElement { return document.createElement('div') }
   updateDOM(): boolean { return false }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): React.ReactElement {
-    return <MermaidComponent nodeKey={this.getKey()} code={this.__code} width={this.__width} />
+    return <MermaidComponent nodeKey={this.getKey()} code={this.__code} width={this.__width} height={this.__height} />
   }
 }
 

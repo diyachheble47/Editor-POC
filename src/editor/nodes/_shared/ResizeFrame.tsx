@@ -10,13 +10,23 @@ import type { ReactNode } from 'react'
 type Corner = 'nw' | 'ne' | 'sw' | 'se'
 const CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se']
 
+/**
+ * `height` is optional: when omitted the box keeps its natural height (images).
+ * With `resizeHeight`, the bottom/top corners also change the height, and
+ * `onCommit` receives the new height as its second argument.
+ */
 export function ResizeFrame({
-  width, min = 120, max = 1400, onCommit, children, className = '',
+  width, height, min = 120, max = 1400, minHeight = 80, maxHeight = 2000, resizeHeight = false,
+  onCommit, children, className = '',
 }: {
   width: number
+  height?: number
   min?: number
   max?: number
-  onCommit: (width: number) => void
+  minHeight?: number
+  maxHeight?: number
+  resizeHeight?: boolean
+  onCommit: (width: number, height?: number) => void
   children: ReactNode
   className?: string
 }) {
@@ -44,21 +54,31 @@ export function ResizeFrame({
       handle.setPointerCapture(e.pointerId)
       const side = corner.endsWith('e') ? 1 : -1
       const startX = e.clientX
+      const startY = e.clientY
       const startWidth = box.offsetWidth
+      const startHeight = box.offsetHeight
+      const vSide = corner.startsWith('s') ? 1 : -1
       const limit = Math.min(max, box.parentElement?.clientWidth ?? max)
       let latest = startWidth
+      let latestHeight = startHeight
       setDragging(true)
       const move = (ev: PointerEvent) => {
         // The frame is centred, so each side moves half the width change.
         latest = Math.round(Math.max(min, Math.min(limit, startWidth + side * 2 * (ev.clientX - startX))))
         box.style.width = `${latest}px`
+        if (resizeHeight) {
+          latestHeight = Math.round(Math.max(minHeight, Math.min(maxHeight, startHeight + vSide * (ev.clientY - startY))))
+          box.style.height = `${latestHeight}px`
+        }
       }
       const up = () => {
         handle.removeEventListener('pointermove', move)
         handle.removeEventListener('pointerup', up)
         handle.removeEventListener('pointercancel', up)
         setDragging(false)
-        if (latest !== startWidth) onCommit(latest)
+        const widthChanged = latest !== startWidth
+        const heightChanged = resizeHeight && latestHeight !== startHeight
+        if (widthChanged || heightChanged) onCommit(latest, resizeHeight ? latestHeight : undefined)
       }
       handle.addEventListener('pointermove', move)
       handle.addEventListener('pointerup', up)
@@ -70,7 +90,7 @@ export function ResizeFrame({
     <div
       ref={ref}
       className={`rz-frame${active ? ' rz-active' : ''}${dragging ? ' rz-dragging' : ''} ${className}`}
-      style={{ width }}
+      style={{ width, ...(height !== undefined ? { height } : null) }}
       onPointerDown={() => setActive(true)}
     >
       {children}

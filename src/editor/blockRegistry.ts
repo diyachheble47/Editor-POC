@@ -390,8 +390,8 @@ export function getTools(): readonly ToolDef[] {
   return TOOL_REGISTRY
 }
 
-// "/agent": a submenu, not a block. SlashCommandPlugin opens it beside the list
-// (AgentFlyout): three fill-in-the-blank sentences that start the AI agent.
+// "/agent" and "/generate": prompt lines, not blocks. Choosing one leaves "/agent " (or
+// "/generate ") on the line and plugins/GenerateLinePlugin lists what can be made under it.
 BLOCK_REGISTRY.unshift(
   {
     key: 'agent',
@@ -403,7 +403,7 @@ BLOCK_REGISTRY.unshift(
     keywords: ['agent', 'ai', 'generate', 'lesson', 'workbook', 'plan', 'gemini'],
     inSlash: true,
     inSidebar: false,
-    insert: () => { /* handled by SlashCommandPlugin (submenu) */ },
+    insert: () => { /* handled by SlashCommandPlugin + GenerateLinePlugin (prompt line) */ },
   },
   {
     key: 'ai-generate',
@@ -415,6 +415,6 @@ BLOCK_REGISTRY.unshift(
     keywords: ['generate', 'ai', 'write'],
     inSlash: true,
     inSidebar: false,
-    insert: () => { /* handled by SlashCommandPlugin (submenu) */ },
+    insert: () => { /* handled by SlashCommandPlugin + GenerateLinePlugin (prompt line) */ },
   },
 )

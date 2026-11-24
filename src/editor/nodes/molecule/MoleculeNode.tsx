@@ -20,6 +20,7 @@ import type {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { COMMAND_PRIORITY_HIGH, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND } from 'lexical'
+import { useReadOnly } from '../_shared/readOnlyContext'
 import { moleculeFromFormula } from './formulaMolecule'
 import { atomsFromSmiles } from './smilesLayout'
 import { SIZE, SCALE, toPx, toData, snap, makePointId } from '../_shared/plane'
@@ -105,7 +106,8 @@ function MoleculeComponent({
   const [activeElement, setActiveElement] = useState<string>('C')
   const [selected, setSelected] = useState<string | null>(null)
   // Tools/grid only show while editing; a fresh empty block starts in edit mode.
-  const [editing, setEditing] = useState(atoms.length === 0)
+  const readOnly = useReadOnly() // Preview: never switch into the sketcher's editing tools
+  const [editing, setEditing] = useState(atoms.length === 0 && !readOnly)
   const [liveSize, setLiveSize] = useState<number | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -350,7 +352,7 @@ function MoleculeComponent({
   function handleAtomClick(e: React.MouseEvent, id: string) {
     e.stopPropagation()
     if (dragMoved.current) { dragMoved.current = false; return }
-    if (!editing) { setEditing(true); return }
+    if (!editing) { if (!readOnly) setEditing(true); return }
     lastTouched.current = id
     if (mode === 'atom') {
       if (activeElement === '⌫') update((node) => node.removeAtom(id))
@@ -434,7 +436,7 @@ function MoleculeComponent({
       ref={rootRef}
       className={`geo-block mol-block${editing ? ' mol-editing' : ''}`}
       contentEditable={false}
-      onClick={() => { if (!editing) setEditing(true) }}
+      onClick={() => { if (!editing && !readOnly) setEditing(true) }}
     >
       {editing && (<>
       <div className="graph-toolbar">

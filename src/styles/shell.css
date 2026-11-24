@@ -27,7 +27,7 @@
 
 .restore-warning-text {
   flex: 1;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--c-text);
   font-family: var(--font-ui);
   line-height: 1.4;
@@ -72,6 +72,20 @@
 .topbar-left  { display: flex; align-items: center; gap: 2px; }
 .topbar-center { flex: 1; }
 .topbar-right { display: flex; align-items: center; gap: 2px; }
+
+/* Share menu: opens under the Share button. */
+.topbar-share-wrap { position: relative; display: inline-flex; }
+.topbar-share-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 50;
+  min-width: 188px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+.topbar-share-item {
+  text-align: left; font: inherit; font-size: 13px; color: var(--c-text);
+  padding: 8px 10px; border: none; background: none; border-radius: 6px; cursor: pointer;
+}
+.topbar-share-item:hover, .topbar-share-item:focus-visible { background: var(--c-surface-hover); outline: none; }
 
 .topbar-divider {
   display: block;
@@ -128,10 +142,27 @@
 }
 
 .topbar-wordcount {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--c-text-3);
   letter-spacing: 0.01em;
 }
+
+/* AI assistant button: opens the side panel for the whole document */
+.topbar-ai-open {
+  height: 28px;
+  padding: 0 11px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast);
+}
+.topbar-ai-open:hover { background: var(--c-surface-hover); }
+.topbar-ai-open:disabled { opacity: 0.5; cursor: default; }
 
 /* Share button */
 .topbar-share-btn {
@@ -141,7 +172,7 @@
   color: #fff;
   border: none;
   border-radius: var(--r-md);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-ui);
@@ -149,6 +180,23 @@
 }
 
 .topbar-share-btn:hover { background: var(--c-accent-hover); }
+
+/* Secondary action (Share): outlined, so Save stays the only filled button. */
+.topbar-secondary-btn {
+  height: 28px;
+  padding: 0 13px;
+  margin-right: 6px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background var(--t-fast);
+}
+.topbar-secondary-btn:hover { background: var(--c-surface-hover); }
 
 /* Universal icon button */
 .icon-btn {
@@ -183,3 +231,18 @@
   overflow: hidden;
 }
 
+
+/* Short status line for Export as PDF (building / failed). */
+.topbar-toast {
+  position: fixed;
+  top: 60px;
+  right: 16px;
+  z-index: 400;
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,.12));
+  color: var(--c-text);
+  font: 500 13px var(--font-ui);
+}

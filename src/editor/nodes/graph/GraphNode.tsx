@@ -19,7 +19,11 @@ import type {
 } from 'lexical'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { compileExpr } from './expr'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
+import { useReadOnly } from '../_shared/readOnlyContext'
+import { plotToLatex } from './latex'
+import { checkPlot, isParametric } from './parametric'
 import { makePointId } from '../_shared/plane'
 import type { PlanePoint } from '../_shared/plane'
 
@@ -55,7 +59,9 @@ function GraphComponent({
   // The editing controls (Point/Connect, the Plot input, remove ×) show only
   // while the user is working on this graph; click outside and just the graph
   // and its equations remain.
-  const [editing, setEditing] = useState(false)
+  // A brand-new (empty) graph opens in editing mode so the Plot input is visible.
+  const readOnly = useReadOnly() // Preview: pan/zoom still work, the editing toolbar never opens
+  const [editing, setEditing] = useState(points.length + edges.length + functions.length === 0 && !readOnly)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -102,7 +108,7 @@ function GraphComponent({
     const expr = fnDraft.trim()
     if (!expr) return
     try {
-      compileExpr(expr) // validate before storing
+      checkPlot(expr) // validate before storing
       update((node) => node.addFunction(expr))
       setFnDraft('')
       setFnError(null)
@@ -112,18 +118,28 @@ function GraphComponent({
     }
   }
 
+  // Live typeset preview of what is being typed (empty/invalid draft: nothing).
+  // Parametric curves are shown as typed (the y = f(x) typeset preview does not fit them).
+  const draftHtml = useMemo(() => {
+    const latex = fnDraft.trim() && !isParametric(fnDraft) ? plotToLatex(fnDraft) : null
+    return latex ? katex.renderToString(latex, { throwOnError: false, output: 'html' }) : null
+  }, [fnDraft])
+
   const curves = useMemo(() => functions.map((expr, i) => {
     const color = FN_COLORS[i % FN_COLORS.length]
+    const parametric = isParametric(expr)
     try {
-      compileExpr(expr)
-      return { expr, color, error: null as string | null }
+      checkPlot(expr)
+      const latex = parametric ? null : plotToLatex(expr)
+      const html = latex ? katex.renderToString(latex, { throwOnError: false, output: 'html' }) : null
+      return { expr, color, parametric, html, error: null as string | null }
     } catch (err) {
-      return { expr, color, error: String(err instanceof Error ? err.message : err) }
+      return { expr, color, parametric, html: null, error: String(err instanceof Error ? err.message : err) }
     }
   }), [functions])
 
   return (
-    <div className="graph-block" contentEditable={false} ref={rootRef} onClick={() => setEditing(true)}>
+    <div className="graph-block" contentEditable={false} ref={rootRef} onClick={() => { if (!readOnly) setEditing(true) }}>
       {editing && <div className="graph-toolbar">
         <button
           type="button"
@@ -159,7 +175,7 @@ function GraphComponent({
           onBackgroundClick={handleBackgroundClick}
           onPointClick={handlePointClick}
           onPointMoved={(id, x, y) => update((node) => node.movePoint(id, x, y))}
-          onEnterEdit={() => setEditing(true)}
+          onEnterEdit={() => { if (!readOnly) setEditing(true) }}
         />
       </Suspense>
 
@@ -167,22 +183,27 @@ function GraphComponent({
         {curves.map((c, i) => (
           <div key={i} className="graph-fn-item">
             <span className="graph-fn-swatch" style={{ background: c.color }} />
-            <span className="graph-fn-expr">y = {c.expr}</span>
+            {c.html
+              ? <span className="graph-fn-expr graph-fn-math" dangerouslySetInnerHTML={{ __html: c.html }} />
+              : c.parametric
+                ? <span className="graph-fn-expr">{c.expr}</span>
+                : <span className="graph-fn-expr">y = {c.expr}</span>}
             {c.error && <span className="graph-fn-error" title={c.error}>invalid</span>}
             {editing && <button type="button" className="graph-fn-remove" onClick={() => update((node) => node.removeFunction(i))}>×</button>}
           </div>
         ))}
         {editing && <div className="graph-fn-add">
-          <span className="graph-fn-add-prefix">y =</span>
+          {!isParametric(fnDraft) && <span className="graph-fn-add-prefix">y =</span>}
           <input
             className="graph-fn-input"
-            placeholder="x^2 + 1"
+            placeholder="x^2 + 1   or   x(t) = cos(t), y(t) = sin(t), t from 0 to 2*pi"
             value={fnDraft}
             onChange={e => { setFnDraft(e.target.value); setFnError(null) }}
             onKeyDown={e => { if (e.key === 'Enter') addFunction() }}
           />
           <button type="button" className="graph-fn-add-btn" onClick={addFunction}>Plot</button>
         </div>}
+        {editing && draftHtml && <div className="graph-fn-preview" dangerouslySetInnerHTML={{ __html: draftHtml }} />}
         {editing && fnError && <div className="graph-fn-error-msg" role="alert">{fnError}</div>}
       </div>
     </div>

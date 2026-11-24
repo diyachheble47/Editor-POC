@@ -12,12 +12,34 @@
 import { $createParagraphNode, $getNodeByKey, $getRoot, $isParagraphNode } from 'lexical'
 import type { LexicalEditor, NodeKey } from 'lexical'
 import { $createNodeFromAiBlock } from '../aiStreamBuilder'
-import { ApiError, streamAiDocument } from '../../storage/api'
-import type { AiRequest } from '../../storage/api'
+import { ApiError, getAiChat, MAX_AI_CHAT_MESSAGES, saveAiChat, streamAiDocument } from '../../storage/api'
+import type { AiChatMessage, AiRequest } from '../../storage/api'
+import type { GenerateChoice } from './generateChoices'
 
 export interface GenerateBlockHooks {
+  docId: string
   setAiState: (state: { status: 'idle' | 'generating' | 'error'; message: string | null; startedAt?: number }) => void
   aiAbortRef: { current: (() => void) | null }
+}
+
+/** Dispatched on window. The open AI Agent panel takes the messages (and saves them with its own
+ * conversation) by setting `handled`; if nothing took them, they're appended to the saved chat directly. */
+export const AI_CHAT_EVENT = 'tnb:ai-chat'
+export interface AiChatEvent { docId: string; messages: AiChatMessage[]; handled: boolean }
+
+const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+
+function recordInChat(docId: string, messages: AiChatMessage[]) {
+  const detail: AiChatEvent = { docId, messages, handled: false }
+  window.dispatchEvent(new CustomEvent<AiChatEvent>(AI_CHAT_EVENT, { detail }))
+  if (detail.handled) return
+  void (async () => {
+    try {
+      // If the saved chat can't be read, skip the write: saving over it would erase the history.
+      const prev = await getAiChat(docId)
+      await saveAiChat(docId, [...prev, ...messages].slice(-MAX_AI_CHAT_MESSAGES))
+    } catch { /* chat history is best-effort */ }
+  })()
 }
 
 /**
@@ -30,31 +52,35 @@ export interface GenerateBlockHooks {
 export async function generateBlockAtAnchor(
   editor: LexicalEditor,
   anchorKey: NodeKey,
-  label: string,
+  choice: GenerateChoice,
   topic: string,
   hooks: GenerateBlockHooks,
-): Promise<void> {
+): Promise<NodeKey | null> {
+  const { label } = choice
   const ai = new AbortController()
   hooks.aiAbortRef.current = () => ai.abort()
   hooks.setAiState({ status: 'generating', message: null, startedAt: Date.now() })
 
   const request: AiRequest = {
     title: topic.slice(0, 120),
-    description: `Add ONE new ${label} block about: ${topic}. Nothing else: no heading, no title, no intro text, and no other block.`,
+    description: `Add ONE new ${label} block about: ${topic}.${choice.hint ? ` It must be ${choice.hint}.` : ''} Nothing else: no heading, no title, no intro text, and no other block.`,
     kind: 'lesson',
   }
 
   let got = false
+  let insertedKey: NodeKey | null = null
   let failure: string | null = null
   try {
     await streamAiDocument(request, event => {
       if (got) return
       if (event.t === 'error') { failure = event.message; return }
-      if (event.t !== 'block' || event.block.type === 'keep') return
+      // Only the chosen kind counts; anything else the model sends first is skipped.
+      if (event.t !== 'block' || event.block.type !== choice.type) return
       got = true
       editor.update(() => {
         try {
           const node = $createNodeFromAiBlock(event.block)
+          insertedKey = node.getKey()
           const anchor = $getNodeByKey(anchorKey)
           if (anchor) {
             anchor.insertAfter(node)
@@ -90,4 +116,14 @@ export async function generateBlockAtAnchor(
       : failure ? { status: 'error', message: failure }
         : { status: 'idle', message: null }, // user stopped it, or the model returned nothing
   )
+
+  const at = Date.now()
+  const outcome: Pick<AiChatMessage, 'text' | 'status'> = got
+    ? { status: 'written', text: `${label} written at the cursor.` }
+    : { status: 'error', text: failure ?? (ai.signal.aborted ? 'Stopped.' : 'The AI returned nothing usable. Try again.') }
+  recordInChat(hooks.docId, [
+    { id: uid(), role: 'user', text: `Generate a ${label}: ${topic}`, at },
+    { id: uid(), role: 'assistant', at, ...outcome },
+  ])
+  return got ? insertedKey : null
 }

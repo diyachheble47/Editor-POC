@@ -71,9 +71,18 @@ function tokenize(src: string): Token[] {
   return tokens
 }
 
-/** Compiles a math expression in `x` into a function. Throws on invalid syntax. */
-export function compileExpr(src: string): (x: number) => number {
+export interface ExprOptions {
+  /** The variable the expression is written in. Default "x"; a parametric curve uses "t". */
+  variable?: string
+  /** Named numbers the expression may use, e.g. { a: 2 }. */
+  constants?: Record<string, number>
+}
+
+/** Compiles a math expression in `x` (or `options.variable`) into a function. Throws on invalid syntax. */
+export function compileExpr(src: string, options: ExprOptions = {}): (x: number) => number {
   const tokens = tokenize(normalize(src))
+  const variable = (options.variable ?? 'x').toLowerCase()
+  const constants = options.constants ?? {}
   let pos = 0
 
   function peek(): Token | undefined { return tokens[pos] }
@@ -156,13 +165,21 @@ export function compileExpr(src: string): (x: number) => number {
     }
     if (t.type === 'ident') {
       const name = t.value.toLowerCase()
-      if (name === 'x') return (x) => x
+      if (name === variable) return (x) => x
       if (Object.hasOwn(CONSTANTS, name)) {
         const v = CONSTANTS[name]
         return () => v
       }
+      if (Object.hasOwn(constants, name)) {
+        const v = constants[name]
+        return () => v
+      }
       const fn = Object.hasOwn(FUNCS, name) ? FUNCS[name] : undefined
-      if (!fn) throw new Error(`Unknown function "${t.value}"`)
+      if (!fn) {
+        const after = peek()
+        if (after?.type === 'op' && after.value === '(') throw new Error(`Unknown function "${t.value}"`)
+        throw new Error(`Unknown name "${t.value}"`)
+      }
       const open = next()
       if (open.type !== 'op' || open.value !== '(') throw new Error(`Expected "(" after ${t.value}`)
       const arg = parseExpr()

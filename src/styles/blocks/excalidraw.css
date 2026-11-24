@@ -48,7 +48,7 @@
 }
 
 .excalidraw-activate-hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--c-text-3);
   background: color-mix(in srgb, var(--c-surface) 80%, transparent);
   padding: 3px 10px;

@@ -16,6 +16,7 @@ import type {
 } from 'lexical'
 import { useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { useReadOnly } from '../_shared/readOnlyContext'
 
 export type CalloutVariant = 'info' | 'tip' | 'warning' | 'caution'
 
@@ -44,6 +45,7 @@ function CalloutComponent({
 }) {
   const [editor] = useLexicalComposerContext()
   const [editing, setEditing] = useState(false)
+  const readOnly = useReadOnly() // the Preview must not change or edit the callout
   const [draft, setDraft] = useState(body)
   const meta = VARIANT_META[variant]
 
@@ -56,6 +58,7 @@ function CalloutComponent({
   }
 
   function cycleVariant() {
+    if (readOnly) return
     const next = VARIANTS[(VARIANTS.indexOf(variant) + 1) % VARIANTS.length]
     editor.update(() => {
       const node = $getNodeByKey(nodeKey)
@@ -64,6 +67,7 @@ function CalloutComponent({
   }
 
   function startEditing() {
+    if (readOnly) return
     setDraft(body)
     setEditing(true)
   }

@@ -53,7 +53,7 @@
 .circuit-block:not(.circuit-editing) .circuit-canvas { cursor: pointer; }
 .circuit-part { position: relative; display: flex; flex-direction: column; align-items: center; }
 .circuit-symbol { color: var(--c-text, #111827); display: block; }
-.circuit-part-label { font-size: 11px; color: var(--c-text-3, #6b7280); text-align: center; }
+.circuit-part-label { font-size: 12px; color: var(--c-text-3, #6b7280); text-align: center; }
 
 .topbar-sync-status { font-size: 12px; color: var(--c-text-3, #6b7280); margin-left: 10px; white-space: nowrap; }
 .topbar-sync-status.offline { color: var(--c-warn); }
@@ -79,9 +79,6 @@
 .agent-panel-head { display: flex; align-items: center; justify-content: space-between; }
 .agent-panel-head h2 { font-size: 16px; margin: 0; }
 .agent-panel-x { border: 0; background: transparent; cursor: pointer; font-size: 16px; color: inherit; }
-.agent-panel-sub { font-size: 13px; color: var(--c-text-2); margin: 0; }
-.agent-panel-form { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-.agent-panel-go { align-self: flex-end; }
 .agent-panel-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
 .agent-preview { max-height: 45vh; overflow-y: auto; border: 1px solid var(--c-border); border-radius: 8px; padding: 8px 12px; flex-shrink: 0; }
 .agent-preview-input { outline: none; min-height: 0; }  /* fit the content, not the page's 60vh */

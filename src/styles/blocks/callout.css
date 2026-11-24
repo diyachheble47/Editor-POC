@@ -40,7 +40,7 @@
 .callout-variant-btn:hover { transform: scale(1.2); }
 
 .callout-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -49,7 +49,7 @@
 }
 
 .callout-edit-btn {
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 7px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);

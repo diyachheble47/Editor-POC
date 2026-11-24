@@ -1,0 +1,113 @@
+/* Print stylesheet for PDF export (WeasyPrint). It is layered after the app's own
+   block styles, so blocks keep their look while the page, typography and
+   page-break rules are set here. Palette matches the 7Seers Student theme. */
+@page {
+  size: A4;
+  margin: 22mm 20mm 24mm 20mm;
+  @top-left { content: string(doc-title); font: 500 8.5pt "Work Sans", "Liberation Sans", "DejaVu Sans", sans-serif; color: #7a8599; }
+  @top-right { content: "Teacher Notebook"; font: 500 8.5pt "Work Sans", "Liberation Sans", "DejaVu Sans", sans-serif; color: #b3bac6; }
+  @bottom-center { content: counter(page) " / " counter(pages); font: 500 8.5pt "Work Sans", "Liberation Sans", "DejaVu Sans", sans-serif; color: #7a8599; }
+}
+@page :first {
+  @top-left { content: none; }
+  @top-right { content: none; }
+}
+
+html, body { background: #fff !important; }
+body {
+  margin: 0;
+  color: #1f2937;
+  font-family: "Work Sans", "Liberation Sans", "DejaVu Sans", sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.62;
+  -weasy-hyphens: manual;
+}
+.pdf-page { max-width: none !important; padding: 0 !important; margin: 0 !important; background: #fff !important; }
+
+/* ---- Title block ---- */
+.pdf-title-block { margin: 0 0 9mm; padding: 0 0 5mm; border-bottom: 2.5pt solid #60237f; }
+.pdf-eyebrow { font-size: 8pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #60237f; margin: 0 0 3mm; }
+.pdf-title { string-set: doc-title content(); font-size: 27pt; line-height: 1.12; font-weight: 700; letter-spacing: -0.02em; color: #111827; margin: 0; border: 0; padding: 0; }
+.pdf-date { font-size: 9pt; color: #7a8599; margin: 3mm 0 0; }
+
+/* ---- Text ---- */
+.editor-input { color: #1f2937; }
+.editor-input p, .editor-paragraph { margin: 0 0 3.2mm; orphans: 3; widows: 3; }
+.editor-heading-h1, .editor-input h1 { font-size: 19pt; line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; margin: 9mm 0 3mm; padding-bottom: 1.6mm; border-bottom: 0.75pt solid #e5e7eb; break-after: avoid; }
+.editor-heading-h2, .editor-input h2 { font-size: 14.5pt; line-height: 1.25; font-weight: 650; margin: 7mm 0 2.4mm; break-after: avoid; }
+.editor-heading-h3, .editor-input h3 { font-size: 11.5pt; line-height: 1.3; font-weight: 650; margin: 5mm 0 1.8mm; break-after: avoid; }
+.editor-input ul, .editor-input ol { margin: 0 0 3.5mm; padding-left: 6.5mm; }
+.editor-input li { margin: 0 0 1.2mm; }
+.editor-input a { color: #60237f; text-decoration: none; border-bottom: 0.5pt solid #c9a9dc; }
+.editor-quote, .editor-input blockquote { margin: 4mm 0; padding: 1mm 0 1mm 4.5mm; border-left: 2.5pt solid #c9a9dc; color: #4b5563; font-style: italic; break-inside: avoid; }
+.editor-input hr { border: 0; border-top: 0.75pt solid #e5e7eb; margin: 6mm 0; }
+
+/* ---- Code ---- */
+.editor-input code, .editor-text-code { font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; font-size: 9pt; background: #f3f4f6; padding: 0.3mm 1.2mm; border-radius: 1.2mm; }
+.editor-code { display: block; font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; font-size: 8.8pt; line-height: 1.5; background: #f8f9fb; border: 0.75pt solid #e5e7eb; border-radius: 2mm; padding: 3.5mm 4mm; margin: 4mm 0; white-space: pre-wrap; overflow-wrap: anywhere; break-inside: avoid; }
+
+/* ---- Tables ---- */
+.editor-input table { border-collapse: collapse; width: 100%; margin: 4mm 0; font-size: 9.6pt; break-inside: avoid; }
+.editor-input th, .editor-input td { border: 0.75pt solid #d8dce3; padding: 1.8mm 2.6mm; text-align: left; vertical-align: top; }
+.editor-input th { background: #f3eaf8; color: #3b1550; font-weight: 650; }
+.editor-input tr:nth-child(even) td { background: #fafbfc; }
+
+/* ---- Blocks: keep each whole, never split across pages ---- */
+.callout-block, .rb-block, .img-block, .quiz-block, .media-embed, figure, svg, img { break-inside: avoid; max-width: 100%; }
+img { height: auto; }
+.callout-block { border-radius: 2mm; margin: 4mm 0; }
+.rb-block { margin: 4mm 0; }
+.img-block { text-align: center; margin: 4mm 0; }
+.img-block img { max-width: 100%; border-radius: 1.5mm; }
+
+/* ---- Quiz: a clean printed worksheet with an answer key ---- */
+.quiz-block { border: 0.75pt solid #d8dce3; border-radius: 2.5mm; padding: 4mm 5mm; background: #fff; }
+.quiz-q { margin: 0 0 4.5mm; break-inside: avoid; }
+.quiz-q-text { font-weight: 650; color: #111827; margin: 0 0 2mm; }
+.quiz-opts { display: block; }
+.quiz-opt { display: block; border: 0.75pt solid #d8dce3; border-radius: 1.8mm; background: #fff; padding: 1.6mm 3mm; margin: 0 0 1.6mm; font: inherit; color: #1f2937; text-align: left; width: 100%; box-sizing: border-box; }
+.quiz-opt.correct { border-color: #15803d; background: #f0fdf4; }
+.quiz-answer { margin: 1.5mm 0 0; font-size: 9.2pt; color: #15803d; font-weight: 600; }
+.quiz-answer span { color: #4b5563; font-weight: 400; }
+.quiz-feedback { display: none; }
+
+/* ---- Notes for blocks that can't be drawn on paper ---- */
+.pdf-placeholder { border: 0.75pt dashed #c9ced8; border-radius: 2mm; padding: 5mm; text-align: center; color: #7a8599; font-size: 9pt; margin: 4mm 0; background: #fafbfc; }
+
+/* ---- Layout fixes (WeasyPrint's flexbox is limited, so these blocks use plain flow) ---- */
+.toc-chips { display: block; margin: 3mm 0 5mm; }
+.toc-chip { display: inline-block; margin: 0 2mm 2mm 0; padding: 1mm 3.2mm; border-radius: 10mm; background: #f3eaf8; color: #3b1550; font-size: 9pt; border: 0; }
+.callout-block { padding: 3.2mm 4.5mm !important; border-left: 2.5pt solid #c9a9dc; }
+.callout-info { border-left-color: #5b9bd5; } .callout-tip { border-left-color: #4caf7d; }
+.callout-warning { border-left-color: #e0a526; } .callout-caution { border-left-color: #d9534f; }
+.callout-header { display: block !important; margin: 0 0 1.5mm !important; }
+.callout-header > * { display: inline-block; vertical-align: middle; }
+.callout-variant-btn { border: 0; background: none; padding: 0 1.5mm 0 0; font-size: 11pt; }
+.callout-label { display: inline-block; flex: none; font-size: 8pt; letter-spacing: 0.08em; }
+.callout-body { white-space: normal; }
+.pdf-figure { text-align: center; margin: 4mm 0; break-inside: avoid; }
+.pdf-figure img { max-width: 100%; max-height: 120mm; }
+.pdf-tab { margin: 0 0 3mm; padding: 2.5mm 4mm; background: #faf5fd; border-left: 2.5pt solid #60237f; border-radius: 1.5mm; break-inside: avoid; }
+.pdf-tab-title { font-weight: 650; color: #3b1550; margin: 0 0 1mm; }
+.pdf-tab-text { color: #1f2937; }
+
+/* ---- Round-2 fixes ---- */
+.toc-chips { display: block !important; }
+.toc-chip { display: inline-block !important; width: auto !important; height: auto !important; line-height: 1.5 !important; text-align: left !important; }
+.callout-header, .callout-header > * { text-align: left !important; }
+.callout-variant-btn { display: inline-block !important; width: auto !important; }
+.callout-label { display: inline-block !important; width: auto !important; }
+
+/* Quiz option: a lettered badge then the text, in plain flow. */
+.quiz-opt { display: block !important; text-align: left; line-height: 1.5; padding: 1.4mm 3mm !important; }
+.quiz-opt::before { display: inline-block !important; width: 5.2mm; height: 5.2mm; line-height: 5.2mm; text-align: center; border-radius: 50%; margin-right: 2.6mm; vertical-align: middle; font-size: 8pt; font-weight: 600; background: #eef0f4; color: #4b5563; }
+.quiz-opt.correct { color: #15803d; }
+.quiz-opt.correct::before { background: #15803d; color: #fff; }
+.quiz-answer { margin-top: 1mm; }
+
+.pdf-embed { border: 0.75pt solid #d8dce3; border-left: 2.5pt solid #60237f; border-radius: 2mm; padding: 3.5mm 5mm; margin: 4mm 0; background: #fafbfc; break-inside: avoid; }
+.pdf-embed-label { font-size: 8pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #60237f; margin-bottom: 1mm; }
+.pdf-embed-title { font-weight: 650; margin-bottom: 1mm; }
+.pdf-embed-url { font-size: 9pt; color: #60237f; word-break: break-all; text-decoration: none; }
+.quiz-block { border: 0 !important; padding: 0 !important; }
+.pdf-embed-thumb { display: block; max-width: 100%; max-height: 85mm; margin: 2mm auto 3mm; border-radius: 1.5mm; }

@@ -22,6 +22,9 @@ interface Props {
   display: Model3DDisplayConfig
 }
 
+/** Dispatched on window before printing, so every 3D model builds and snapshots itself first. */
+export const PREPARE_PRINT_EVENT = 'tnb:prepare-print'
+
 // 'unloaded' = has a modelUrl but hasn't been built into an actual Three.js
 // scene yet, either because it's never scrolled into view, or because it
 // was built once and then torn down again after scrolling out of view.
@@ -319,6 +322,16 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
           rafRef.current = requestAnimationFrame(tick)
           controls.update()
           renderer.render(scene, camera)
+          // Printed WebGL canvases are unreliable, so print gets a static image of the same frame.
+          if (printing && !printSnapshotted) {
+            printSnapshotted = true
+            const img = document.createElement('img')
+            img.className = 'model3d-print-snapshot'
+            img.alt = ''
+            img.src = renderer.domElement.toDataURL('image/png')
+            container.appendChild(img)
+            container.dataset.printReady = ''
+          }
         }
         tick()
       }
@@ -410,16 +423,27 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
     // rootMargin starts loading a little before the block is fully in view
     // (and tears down a beat after it fully leaves) rather than popping
     // in/out exactly at the viewport edge.
+    // Printing lays the page out off-screen, so the observer never reports these as visible.
+    // While printing, the model is built regardless and kept built until the print is done.
+    let printing = false
+    let printSnapshotted = false
     const visibilityObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) build()
-        else teardown()
+        else if (!printing) teardown()
       }
     }, { rootMargin: '200px 0px' })
     visibilityObserver.observe(container)
 
+    const onPrepare = () => { printing = true; build() }
+    const onAfterPrint = () => { printing = false }
+    window.addEventListener(PREPARE_PRINT_EVENT, onPrepare)
+    window.addEventListener('afterprint', onAfterPrint)
+
     return () => {
       visibilityObserver.disconnect()
+      window.removeEventListener(PREPARE_PRINT_EVENT, onPrepare)
+      window.removeEventListener('afterprint', onAfterPrint)
       teardown()
     }
   }, [modelUrl, scale, animation.autoRotate, animation.rotationSpeed, display.height, disposeThreeJS])
@@ -523,6 +547,7 @@ export function Model3DViewer({ nodeKey, modelId, modelUrl, fileName, scale, ani
         <div
           ref={canvasRef}
           className="model3d-canvas"
+          data-model3d=""
           style={heightStyle}
         />
 

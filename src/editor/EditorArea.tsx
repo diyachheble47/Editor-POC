@@ -6,6 +6,7 @@ import { ListPlugin } from '@lexical/react/LexicalListPlugin'
 import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin'
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin'
 import { SlashCommandPlugin } from './SlashCommandPlugin'
+import { GenerateLinePlugin } from './plugins/GenerateLinePlugin'
 import { MatrixPickerPlugin, MatrixControlsPlugin } from './nodes/matrix'
 import { DataTablePickerPlugin } from './nodes/datatable'
 import { InitStreamPlugin } from './plugins/InitStreamPlugin'
@@ -97,6 +98,9 @@ export function EditorArea() {
 
           {/* Slash command menu */}
           <SlashCommandPlugin />
+
+          {/* "/generate" prompt line: block-type chips under the line */}
+          <GenerateLinePlugin />
         </div>
       </div>
     </div>

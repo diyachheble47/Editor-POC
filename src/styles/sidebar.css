@@ -67,7 +67,7 @@
   background: var(--c-ground);
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--c-text);
   outline: none;
   font-family: var(--font-ui);
@@ -104,7 +104,7 @@
 
 .lsb-section-header {
   padding: 10px 14px 4px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -243,6 +243,11 @@
 
 .lsb-doc-item:hover { background: var(--c-surface-hover); }
 .lsb-doc-item.active { background: var(--c-accent-bg); }
+/* Outline of the open document, shown directly under its row in Documents. */
+.lsb-doc-group { display: flex; flex-direction: column; }
+.lsb-doc-outline { padding: 2px 8px 10px 12px; }
+.lsb-doc-outline .lsb-outline-empty-text { margin: 4px 0 0; font-size: 12px; color: var(--c-text-3); line-height: 1.45; }
+.lsb-doc-outline .lsb-empty-search { margin: 4px 0 0; font-size: 12px; color: var(--c-text-3); }
 
 .lsb-doc-item-main {
   flex: 1;
@@ -271,7 +276,7 @@
 }
 
 .lsb-active-doc-title {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--c-text);
   font-weight: 500;
   overflow: hidden;
@@ -284,7 +289,7 @@
 }
 
 .lsb-doc-item-time {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--c-text-3);
 }
 
@@ -331,7 +336,7 @@
   cursor: pointer;
   text-align: left;
   font-family: var(--font-ui);
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--c-text-2);
   border-radius: var(--r-sm, 4px);
   overflow: hidden;
@@ -343,9 +348,9 @@
 .lsb-outline-item:hover { background: var(--c-surface-hover); color: var(--c-text); }
 .lsb-outline-item.active { color: var(--c-accent); background: var(--c-surface-hover); }
 
-.lsb-outline-h1 { padding-left: 12px; font-weight: 600; font-size: 12.5px; }
+.lsb-outline-h1 { padding-left: 12px; font-weight: 600; font-size: 13px; }
 .lsb-outline-h2 { padding-left: 20px; font-size: 12px; }
-.lsb-outline-h3 { padding-left: 28px; font-size: 11.5px; color: var(--c-text-3); }
+.lsb-outline-h3 { padding-left: 28px; font-size: 12px; color: var(--c-text-3); }
 .lsb-outline-h3.active { color: var(--c-accent); }
 
 /* Footer */
@@ -364,7 +369,7 @@
   background: transparent;
   cursor: pointer;
   border-radius: var(--r-md);
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--c-text-2);
   font-family: var(--font-ui);
   width: 100%;

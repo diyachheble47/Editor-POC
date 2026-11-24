@@ -5,6 +5,7 @@ import { $getNodeByKey } from 'lexical'
 import type { LexicalNode, NodeKey } from 'lexical'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import { useReadOnly } from './readOnlyContext'
 
 export function useBlockData<T>(
   nodeKey: NodeKey,
@@ -15,7 +16,13 @@ export function useBlockData<T>(
   const { clickToEdit = true } = options
   const [editor] = useLexicalComposerContext()
   const [data, setData] = useState<T>(initial)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditingRaw] = useState(false)
+  const readOnly = useReadOnly()
+  // In the Preview a block never opens its editing UI; closing it is still allowed.
+  const setEditing = useCallback((next: boolean) => {
+    if (readOnly && next) return
+    setEditingRaw(next)
+  }, [readOnly])
   const rootRef = useRef<HTMLDivElement>(null)
   const initialKey = useMemo(() => JSON.stringify(initial), [initial])
   const writeRef = useRef(write)

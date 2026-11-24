@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest'
+import { ghostFor, parse } from './GenerateLinePlugin'
+
+describe('/generate line parsing', () => {
+  it('finds nothing in free text or a half-typed type', () => {
+    expect(parse('').choice).toBeNull()
+    expect(parse('qu').choice).toBeNull()
+    expect(parse('something else').choice).toBeNull()
+  })
+
+  it('knows a bare type has no topic yet', () => {
+    expect(parse('quiz')).toMatchObject({ choice: { label: 'Quiz' }, topic: null })
+    expect(parse('quiz ')).toMatchObject({ choice: { label: 'Quiz' }, topic: null })
+  })
+
+  it('reads the topic after "for"', () => {
+    expect(parse('quiz for ')).toMatchObject({ choice: { label: 'Quiz' }, topic: '' })
+    expect(parse('Circuit for series and parallel')).toMatchObject({ choice: { label: 'Circuit' }, topic: 'series and parallel' })
+  })
+
+  it('takes the longest type name', () => {
+    expect(parse('chemical equation for combustion').choice?.label).toBe('Chemical equation')
+  })
+})
+
+describe('/generate grey suggestions', () => {
+  it('suggests " for" after a bare type', () => {
+    expect(ghostFor('quiz', 0)).toMatchObject({ text: ' for', full: 'quiz for ' })
+  })
+
+  it('suggests variants and cycles through them', () => {
+    expect(ghostFor('circuit for ', 0)).toMatchObject({ text: 'series', full: 'circuit for series', count: 3 })
+    expect(ghostFor('circuit for ', 1)?.text).toBe('parallel')
+    expect(ghostFor('circuit for pa', 0)).toMatchObject({ text: 'rallel', full: 'circuit for parallel' })
+  })
+
+  it('shows no hint when a type has no variants, and nothing once typing a topic', () => {
+    expect(ghostFor('drawing for ', 0)).toBeNull()
+    expect(ghostFor('drawing for the heart', 0)).toBeNull()
+  })
+})
+
+describe('/agent line', () => {
+  it('knows the three whole-document kinds', () => {
+    expect(parse('lesson plan for photosynthesis', 'agent')).toMatchObject({ choice: { label: 'Lesson plan', kind: 'lesson_plan' }, topic: 'photosynthesis' })
+    expect(parse('workbook', 'agent')).toMatchObject({ choice: { kind: 'workbook' }, topic: null })
+    expect(parse('lesson builder for ', 'agent')).toMatchObject({ choice: { kind: 'lesson' }, topic: '' })
+  })
+
+  it('does not take block names for documents, or the other way round', () => {
+    expect(parse('quiz for x', 'agent').choice).toBeNull()
+    expect(parse('workbook for x', 'generate').choice).toBeNull()
+  })
+
+  it('suggests " for" after a bare document kind, and no hint after it', () => {
+    expect(ghostFor('workbook', 0, 'agent')).toMatchObject({ text: ' for', full: 'workbook for ' })
+    expect(ghostFor('lesson plan for ', 0, 'agent')).toBeNull()
+  })
+})

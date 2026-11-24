@@ -145,6 +145,30 @@ def _sanitize_circuit(raw: dict) -> Optional[dict]:
     return {"type": "circuit", "parts": parts, "wires": wires} if len(parts) >= 2 and wires else None
 
 
+MAX_SHAPES = 40
+DRAWING_KINDS = {"rect", "ellipse", "diamond", "arrow", "text"}
+
+
+def _sanitize_drawing(raw: dict) -> Optional[dict]:
+    shapes = raw.get("shapes")
+    if not isinstance(shapes, list):
+        return None
+    clean = []
+    for s in shapes[:MAX_SHAPES]:
+        if not isinstance(s, dict) or s.get("kind") not in DRAWING_KINDS:
+            continue
+        nums = [_number(s.get(k)) for k in ("x", "y", "w", "h")]
+        if any(n is None for n in nums):
+            continue
+        x, y, w, h = (max(-2000.0, min(2000.0, n)) for n in nums)
+        shape = {"kind": s["kind"], "x": x, "y": y, "w": w, "h": h}
+        text = _text(s.get("text"), 60)
+        if text:
+            shape["text"] = text
+        clean.append(shape)
+    return {"type": "drawing", "shapes": clean} if clean else None
+
+
 def sanitize_block(raw: object) -> Optional[dict]:
     """Returns a clean block, or None if it isn't something we accept."""
     if not isinstance(raw, dict):
@@ -302,6 +326,9 @@ def sanitize_block(raw: object) -> Optional[dict]:
 
     if kind == "flowchart":
         return _sanitize_mermaid("flowchart", raw)
+
+    if kind == "drawing":
+        return _sanitize_drawing(raw)
 
     return None
 

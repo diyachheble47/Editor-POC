@@ -324,3 +324,18 @@ def test_html_block_in_a_document_only_when_interactive_was_asked(client, monkey
 
     asked = frames(client.post("/ai/generate", json={**BODY, "description": "include an interactive simulation"}))
     assert any(e.get("block", {}).get("type") == "html" for e in asked)
+
+
+def test_sanitize_drawing_keeps_valid_shapes_and_drops_junk():
+    d = sanitize_block({"type": "drawing", "shapes": [
+        {"kind": "rect", "x": 10, "y": 20, "w": 100, "h": 50, "text": "Heart"},
+        {"kind": "star", "x": 0, "y": 0, "w": 1, "h": 1},
+        {"kind": "arrow", "x": "5", "y": 0, "w": 1, "h": 1},
+        {"kind": "ellipse", "x": 5e5, "y": 0, "w": 10, "h": 10},
+    ]})
+    assert d == {"type": "drawing", "shapes": [
+        {"kind": "rect", "x": 10.0, "y": 20.0, "w": 100.0, "h": 50.0, "text": "Heart"},
+        {"kind": "ellipse", "x": 2000.0, "y": 0.0, "w": 10.0, "h": 10.0},
+    ]}
+    assert sanitize_block({"type": "drawing", "shapes": [{"kind": "star"}]}) is None
+    assert sanitize_block({"type": "drawing", "shapes": "rect"}) is None

@@ -23,7 +23,7 @@
 }
 
 .preview-overlay-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -131,15 +131,21 @@
   font-family: var(--font-ui);
 }
 
-/* The preview is look-but-don't-touch: several blocks (Mermaid's
-   click-to-edit, ResizeFrame's drag handles, spreadsheet cells, …) listen
-   for pointer events on themselves regardless of the Lexical editor's own
-   `editable` flag, so that flag alone can't make them inert. */
+/* The preview is read-only but interactive: quiz answers, 3D rotate/zoom,
+   diagrams and HTML activities all respond. Resize corners and inline editing
+   controls are not offered here. */
 .preview-overlay-input {
-  pointer-events: none;
   min-height: 0;
   caret-color: transparent;
 }
+.preview-overlay .rz-handle,
+.preview-overlay .rb-edit,
+.preview-overlay .mm-editor,
+.preview-overlay .callout-edit-btn,
+.preview-overlay .img-replace,
+.preview-overlay .geo-block .graph-toolbar { display: none !important; }
+/* The geometry figure is a drawn diagram: shown, but its click-to-add tools are off. */
+.preview-overlay .geo-block svg { pointer-events: none; }
 
 /* Printing (Export PDF uses the browser's own print dialog, see
    PreviewModal's handlePrint): the rest of the app (#root) is hidden so

@@ -107,7 +107,7 @@
   margin: 36px 0 8px;
   line-height: 1.25;
   letter-spacing: -0.02em;
-  color: var(--c-text);
+  color: var(--c-heading);
 }
 
 .editor-heading-h2 {
@@ -116,14 +116,14 @@
   margin: 28px 0 6px;
   line-height: 1.3;
   letter-spacing: -0.01em;
-  color: var(--c-text);
+  color: var(--c-heading);
 }
 
 .editor-heading-h3 {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   margin: 20px 0 4px;
-  color: var(--c-text-2);
+  color: var(--c-heading-3);
 }
 
 .editor-quote {
@@ -239,7 +239,7 @@
   color: #c9d1d9;
   border: none;
   border-radius: 6px;
-  font: 500 12.5px var(--font-ui);
+  font: 500 13px var(--font-ui);
   padding: 5px 26px 5px 8px;
   cursor: pointer;
 }
@@ -333,7 +333,7 @@
 .fft-underline { text-decoration: underline; }
 .fft-strike    { text-decoration: line-through; }
 .fft-code      { font-family: var(--font-mono); font-size: 15px; }
-.fft-block-btn { font-size: 10.5px; font-weight: 700; width: 26px; }
+.fft-block-btn { font-size: 12px; font-weight: 700; width: 26px; }
 
 .fft-divider {
   display: block;
@@ -470,7 +470,7 @@
 
 .block-action-kbd {
   margin-left: auto;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--c-text-3);
   white-space: nowrap;
   flex-shrink: 0;
@@ -501,7 +501,7 @@
 
 .slash-menu-section {
   padding: 8px 8px 4px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -547,11 +547,11 @@
   font-weight: 500;
   color: var(--c-text);
   line-height: 1.3;
-  font-size: 13.5px;
+  font-size: 14px;
 }
 
 .slash-menu-description {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--c-text-3);
   line-height: 1.4;
   display: -webkit-box;
@@ -568,7 +568,7 @@
 }
 
 .slash-menu-badge-soon {
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;

@@ -171,7 +171,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         setDocuments(docs)
         setActiveDocId(activeId)
         const active = docs.find(d => d.id === activeId)
-        setTitleRaw(active?.title ?? 'Untitled')
+        setTitleRaw(capitalizeTitle(active?.title ?? 'Untitled'))
         setLastSaved(active?.lastSaved ? new Date(active.lastSaved) : null)
         setWordCount(active?.wordCount ?? 0)
         setReady(true)
@@ -203,7 +203,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   }, [markDirty])
 
   const setTitle = useCallback((t: string) => {
-    setTitleRaw(t)
+    setTitleRaw(capitalizeTitle(t))
     markDirty()
   }, [markDirty])
 
@@ -297,7 +297,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   function activateEntry(entry: DocEntry) {
     setActiveDocPointer(entry.id)
     setActiveDocId(entry.id)
-    setTitleRaw(entry.title)
+    setTitleRaw(capitalizeTitle(entry.title))
     setSaveStatus('idle')
     setSaveError(null)
     setLastSaved(entry.lastSaved ? new Date(entry.lastSaved) : null)
@@ -424,6 +424,11 @@ export function useDocument() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Titles always start with a capital letter (leading spaces are kept). */
+export function capitalizeTitle(t: string): string {
+  return t.replace(/^(\s*)(\p{Ll})/u, (_, space: string, letter: string) => space + letter.toUpperCase())
+}
 
 export function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - date.getTime()

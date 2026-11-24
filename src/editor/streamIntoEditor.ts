@@ -19,14 +19,14 @@ export function createDocumentStreamBuilder(editor: LexicalEditor) {
     get skipped() { return skipped },
     apply(event: StreamEvent) {
       if (event.t === 'start') {
-        editor.update(() => { $getRoot().clear() }, { discrete: true })
+        editor.update(() => { $getRoot().clear() }, { discrete: true, tag: 'skip-scroll-into-view' })
         return
       }
       if (event.t === 'close') { openKey = null; skippingOpenBlock = false; return }
       if (event.t === 'done') {
         editor.update(() => {
           if ($getRoot().isEmpty()) $getRoot().append($createParagraphNode())
-        }, { discrete: true })
+        }, { discrete: true, tag: 'skip-scroll-into-view' })
         return
       }
       editor.update(() => {
@@ -49,7 +49,7 @@ export function createDocumentStreamBuilder(editor: LexicalEditor) {
           if (event.t === 'open') skippingOpenBlock = true
           if (event.t !== 'text') skipped++
         }
-      }, { discrete: true })
+      }, { discrete: true, tag: 'skip-scroll-into-view' })
     },
   }
 }

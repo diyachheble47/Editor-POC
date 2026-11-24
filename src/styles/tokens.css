@@ -1,27 +1,31 @@
 :root {
   /* ── Surfaces ──────────────────────────────────────────────── */
-  --c-ground:           #f7f7f5;
+  /* Light palette follows the 7Seers Student app (slate neutrals, plum brand). */
+  --c-ground:           #f1f5f9;
   --c-surface:          #ffffff;
-  --c-surface-hover:    #f4f4f2;
-  --c-surface-active:   #ededeb;
+  --c-surface-hover:    #f1f5f9;
+  --c-surface-active:   #e2e8f0;
 
   /* ── Borders ───────────────────────────────────────────────── */
-  --c-border:           #e8e8e6;
-  --c-border-strong:    #d2d2cf;
+  --c-border:           #e2e8f0;
+  --c-border-strong:    #cbd5e1;
 
   /* ── Text ──────────────────────────────────────────────────── */
-  --c-text:             #1a1a1a;
-  --c-text-2:           #595959;
-  --c-text-3:           #a3a3a0;
-  --c-text-placeholder: #b0b0ab;
+  --c-text:             #334155;
+  --c-text-2:           #64748b;
+  --c-text-3:           #7c8798;
+  --c-text-placeholder: #94a3b8;
+  /* Document headings keep their own colours (not the body text colour). */
+  --c-heading:          #1a1a1a;
+  --c-heading-3:        #595959;
 
-  /* ── Accent (single source of truth — violet-indigo) ───────── */
-  --c-accent:           #6e62c8;
-  --c-accent-hover:     #5b51b0;
-  --c-accent-text:      #5248a8;
-  --c-accent-bg:        #f0eeff;
-  --c-accent-muted:     rgba(110, 98, 200, 0.12);
-  --c-accent-surface:   rgba(110, 98, 200, 0.07);
+  /* ── Accent (student plum brand) ───────────────────────────── */
+  --c-accent:           #60237f;
+  --c-accent-hover:     #4c1b64;
+  --c-accent-text:      #60237f;
+  --c-accent-bg:        #f6f0fa;
+  --c-accent-muted:     rgba(96, 35, 127, 0.12);
+  --c-accent-surface:   rgba(96, 35, 127, 0.07);
 
   /* ── Semantic ──────────────────────────────────────────────── */
   --c-success:          #16a34a;
@@ -37,9 +41,22 @@
   --sidebar-r-w:        280px;
 
   /* ── Typography ────────────────────────────────────────────── */
-  --font-ui:   -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
+  /* Inter is built for screen legibility at small sizes; the system stack
+     is the fallback if the font cannot load. */
+  --font-ui:   'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+
+  /* ── Type scale ────────────────────────────────────────────── */
+  /* Use these steps instead of ad-hoc sizes. Nothing goes below 12px. */
+  --fs-caption: 12px;  /* hints, badges, meta */
+  --fs-small:   13px;  /* secondary UI, labels */
+  --fs-ui:      14px;  /* default UI text */
+  --fs-body:    15px;  /* document body text */
+  --fs-lead:    18px;
+  --fs-h3:      20px;
+  --fs-h2:      24px;
+  --fs-h1:      28px;
 
   /* ── Transitions ───────────────────────────────────────────── */
   --t-fast: 0.1s ease;
@@ -76,6 +93,9 @@
   --c-text-2:           #a3a3b0;
   --c-text-3:           #71717e;
   --c-text-placeholder: #5b5b67;
+  /* Headings keep exactly the colours they had before (dark mode unchanged). */
+  --c-heading:          #ececf0;
+  --c-heading-3:        #a3a3b0;
 
   --c-accent:           #7c7ff0;
   --c-accent-hover:     #9093f5;

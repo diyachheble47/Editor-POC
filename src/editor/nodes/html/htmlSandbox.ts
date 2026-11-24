@@ -36,11 +36,30 @@ function size(){var b=document.body,d=document.documentElement;send({tnb:1,id:id
 window.tnb={emit:function(name,payload){send({tnb:1,id:id,type:'event',name:String(name).slice(0,60),payload:payload})}};
 if(window.ResizeObserver)new ResizeObserver(size).observe(document.documentElement);
 addEventListener('load',size);setTimeout(size,60);
+// A still picture of the widget as it looks right now (used by Export as PDF): the
+// parent asks, the widget answers with its own DOM and canvases flattened to images.
+function copyStyles(a,b){var cs=getComputedStyle(a),st=b.style;if(st)for(var i=0;i<cs.length;i++)st.setProperty(cs[i],cs.getPropertyValue(cs[i]));for(var k=0;k<a.children.length&&k<b.children.length;k++)copyStyles(a.children[k],b.children[k])}
+addEventListener('message',function(e){
+var d=e.data;if(!d||d.tnb!==1||d.type!=='snapshot'||d.id!==id)return;
+try{
+var body=document.body,wrap=document.createElement('div'),clone=body.cloneNode(true);
+var live=body.querySelectorAll('canvas'),cp=clone.querySelectorAll('canvas');
+for(var i=0;i<cp.length;i++){try{var im=document.createElement('img');im.src=live[i].toDataURL('image/png');im.style.cssText='width:'+live[i].clientWidth+'px;height:'+live[i].clientHeight+'px';cp[i].parentNode.replaceChild(im,cp[i])}catch(x){}}
+var sc=clone.querySelectorAll('script');for(var j=0;j<sc.length;j++)sc[j].remove();
+copyStyles(body,clone);
+var bs=getComputedStyle(body);for(var m=0;m<bs.length;m++)wrap.style.setProperty(bs[m],bs.getPropertyValue(bs[m]));
+wrap.style.margin='0';while(clone.firstChild)wrap.appendChild(clone.firstChild);
+wrap.setAttribute('xmlns','http://www.w3.org/1999/xhtml');
+send({tnb:1,id:id,type:'snapshot',req:d.req,xhtml:new XMLSerializer().serializeToString(wrap),width:Math.ceil(document.documentElement.scrollWidth),height:Math.ceil(Math.max(body.scrollHeight,document.documentElement.scrollHeight))});
+}catch(x){send({tnb:1,id:id,type:'snapshot',req:d.req,error:String(x)})}
+});
 })();`
 
 const BASE_CSS = (vars: Record<string, string>) =>
   `:root{${Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(';')}}` +
-  'html{background:transparent}body{margin:0;padding:4px 2px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;' +
+  // !important: the widget's own CSS (often a light body background) must not
+  // paint the whole iframe white in dark mode; the page behind should show through.
+  'html,body{background:transparent !important}body{margin:0;padding:4px 2px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;' +
   'font-size:15px;line-height:1.55;color:var(--c-text,#1a1a1a)}*{box-sizing:border-box}'
 
 /** Wraps a teacher's / AI's HTML (a fragment or a whole page) with the policy, theme and SDK. */

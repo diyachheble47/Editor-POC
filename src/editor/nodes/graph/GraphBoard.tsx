@@ -9,6 +9,7 @@ import { useTheme } from '../../../context/ThemeContext'
 import JXG from 'jsxgraph'
 import './jsxgraph.css' // copied from the jsxgraph package (its exports map hides the css file)
 import { compileExpr } from './expr'
+import { isParametric, parseParametric } from './parametric'
 import { RANGE, snap } from '../_shared/plane'
 import type { PlanePoint } from '../_shared/plane'
 
@@ -64,11 +65,20 @@ export default function GraphBoard(props: GraphBoardProps) {
     board.create('grid', [], { gridX: 1, gridY: 1, strokeColor: faint, strokeOpacity: 0.7, majorStep: 1 })
 
     props.functions.forEach((expr, i) => {
+      const style = { strokeColor: props.colors[i % props.colors.length], strokeWidth: 2.5, highlight: false, fixed: true }
       try {
+        if (isParametric(expr)) {
+          // x(t), y(t) over t from tMin to tMax: JSXGraph samples the curve itself.
+          const { x, y, tMin, tMax } = parseParametric(expr)
+          board.create('curve', [
+            (t: number) => { try { return x(t) } catch { return NaN } },
+            (t: number) => { try { return y(t) } catch { return NaN } },
+            tMin, tMax,
+          ], { ...style, numberPointsHigh: 4000 })
+          return
+        }
         const fn = compileExpr(expr)
-        board.create('functiongraph', [(x: number) => { try { return fn(x) } catch { return NaN } }], {
-          strokeColor: props.colors[i % props.colors.length], strokeWidth: 2.5, highlight: false, fixed: true,
-        })
+        board.create('functiongraph', [(x: number) => { try { return fn(x) } catch { return NaN } }], style)
       } catch { /* invalid expression: the block lists it as invalid */ }
     })
 

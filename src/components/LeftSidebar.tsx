@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useEditorUI } from '../editor/context/EditorUIContext'
-import { useDocument, formatRelativeTime } from '../context/DocumentContext'
+import { useDocument, formatRelativeTime, capitalizeTitle } from '../context/DocumentContext'
 import type { OutlineItem } from '../context/DocumentContext'
 
 interface LeftSidebarProps {
@@ -35,8 +35,7 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
 
         {/* Header */}
         <div className="lsb-header">
-          <span className="lsb-header-icon" aria-hidden="true">📚</span>
-          <span className="lsb-header-title">My Notebook</span>
+          <span className="lsb-header-title">Editor</span>
         </div>
 
         {/* Search */}
@@ -76,8 +75,8 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
                 const isActive = doc.id === activeDocId
                 const isConfirming = confirmDeleteId === doc.id
                 return (
+                  <div key={doc.id} className="lsb-doc-group">
                   <div
-                    key={doc.id}
                     className={`lsb-doc-item${isActive ? ' active' : ''}`}
                   >
                     <button
@@ -86,9 +85,8 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
                       onClick={() => { switchDocument(doc.id); setConfirmDeleteId(null) }}
                       title={doc.title || 'Untitled'}
                     >
-                      <span className="lsb-active-doc-emoji" aria-hidden="true">🧪</span>
                       <span className="lsb-doc-item-text">
-                        <span className="lsb-active-doc-title">{doc.title || 'Untitled'}</span>
+                        <span className="lsb-active-doc-title">{capitalizeTitle(doc.title || 'Untitled')}</span>
                         {doc.lastSaved && (
                           <span className="lsb-doc-item-time">{formatRelativeTime(new Date(doc.lastSaved))}</span>
                         )}
@@ -115,28 +113,26 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
                       </button>
                     ))}
                   </div>
+                  {/* The open document's outline sits right under it. */}
+                  {isActive && (
+                    <div className="lsb-doc-outline">
+                      {filteredOutline.length === 0 ? (
+                        query ? (
+                          <p className="lsb-empty-search">No headings match "{query}"</p>
+                        ) : (
+                          <p className="lsb-outline-empty-text">
+                            Add headings to your document to build an outline
+                          </p>
+                        )
+                      ) : (
+                        <OutlineNav items={filteredOutline} />
+                      )}
+                    </div>
+                  )}
+                  </div>
                 )
               })}
             </div>
-          </div>
-
-          {/* Outline */}
-          <div className="lsb-section">
-            <div className="lsb-section-header">Outline</div>
-            {filteredOutline.length === 0 ? (
-              query ? (
-                <p className="lsb-empty-search">No headings match "{query}"</p>
-              ) : (
-                <div className="lsb-outline-empty">
-                  <span className="lsb-outline-empty-glyph" aria-hidden="true">≡</span>
-                  <p className="lsb-outline-empty-text">
-                    Add headings to your document to build an outline
-                  </p>
-                </div>
-              )
-            ) : (
-              <OutlineNav items={filteredOutline} />
-            )}
           </div>
 
         </div>

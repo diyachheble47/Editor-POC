@@ -6,10 +6,11 @@ import { ApiError, streamAiDocument, streamServerDocument } from '../../storage/
 import type { AiRequest } from '../../storage/api'
 import { createAiStreamBuilder } from '../aiStreamBuilder'
 import { createDocumentStreamBuilder } from '../streamIntoEditor'
+import { loadDocumentState } from '../../storage/documentStore'
 
-// Opening a document streams its saved content from the server (Server-Sent
-// Events) and builds it in the editor as it arrives: text types in, other
-// blocks (models, equations, circuits...) appear whole. A document that was
+// Opening a saved document loads its content in one step (no animation). The
+// streamed build with typing is used only when AI writes into the document:
+// the first generation, or a later change made by the AI. A document that was
 // never saved starts blank.
 export function InitStreamPlugin() {
   const [editor] = useLexicalComposerContext()
@@ -31,7 +32,7 @@ export function InitStreamPlugin() {
       let blocks = 0
       let failure: string | null = null
       setAiState({ status: 'generating', message: null, startedAt: Date.now() })
-      editor.update(() => { $getRoot().clear() }, { discrete: true })
+      editor.update(() => { $getRoot().clear() }, { discrete: true, tag: 'skip-scroll-into-view' })
       try {
         await streamAiDocument(request, event => {
           if (event.t === 'error') { failure = event.message; return }
@@ -66,15 +67,32 @@ export function InitStreamPlugin() {
       // the middle of it (and a half-built document can't be saved).
       editor.setEditable(false)
       setDocLoading(true)
+
+      // Opening a saved document shows it at once: one fetch, then the whole
+      // content is set in one step, with no typing animation. Only a document
+      // that cannot be read that way falls back to the block-by-block stream,
+      // which skips the blocks it cannot show.
+      async function openSavedDocument(): Promise<boolean> {
+        const state = await loadDocumentState(activeDocId)
+        if (abort.signal.aborted) return true
+        if (state == null) return false
+        try {
+          editor.setEditorState(editor.parseEditorState(JSON.stringify(state)), { tag: 'history-merge' })
+          return true
+        } catch {
+          return streamServerDocument(
+            activeDocId,
+            // Events already buffered when an abort lands must not touch the editor.
+            e => { if (!abort.signal.aborted) builder.apply(e) },
+            abort.signal,
+          )
+        }
+      }
+
       try {
         // A document that was never saved has nothing on the server to stream
         // (asking would just return a 404), so it starts blank.
-        const found = !isDocSaved(activeDocId) ? false : await streamServerDocument(
-          activeDocId,
-          // Events already buffered when an abort lands must not touch the editor.
-          e => { if (!abort.signal.aborted) builder.apply(e) },
-          abort.signal,
-        )
+        const found = !isDocSaved(activeDocId) ? false : await openSavedDocument()
         if (abort.signal.aborted) return
         if (!found) {
           editor.update(() => {

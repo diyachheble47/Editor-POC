@@ -23,6 +23,7 @@ import 'katex/contrib/mhchem'
 import 'katex/dist/katex.min.css'
 import { useEditorUI } from '../../context/EditorUIContext'
 import type { MathVariant } from '../../context/EditorUIContext'
+import { useReadOnly } from '../_shared/readOnlyContext'
 
 export type { MathVariant }
 
@@ -65,7 +66,10 @@ function MathComponent({
     }
   }, [latex, displayMode, variant])
 
+  const readOnly = useReadOnly()
   function handleClick() {
+    // In the Preview this block is just read; the equation panel belongs to the real editor.
+    if (readOnly) return
     update({
       activeMath: { nodeKey, latex, variant, displayMode },
     })

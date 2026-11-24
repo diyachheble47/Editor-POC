@@ -33,7 +33,7 @@
 }
 
 .geo-angle-label {
-  font-size: 10px;
+  font-size: 12px;
   fill: var(--c-accent);
   font-family: var(--font-mono, monospace);
 }

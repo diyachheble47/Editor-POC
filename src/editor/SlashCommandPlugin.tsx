@@ -7,26 +7,15 @@ import {
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
   KEY_ESCAPE_COMMAND,
-  KEY_ARROW_DOWN_COMMAND,
-  KEY_ARROW_UP_COMMAND,
-  KEY_ARROW_RIGHT_COMMAND,
-  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_HIGH,
+  $createParagraphNode,
+  $createTextNode,
   $getSelection,
   $isRangeSelection,
   $isTextNode,
-  mergeRegister,
 } from 'lexical'
-import { useEditorUI } from './context/EditorUIContext'
-import { useDocument } from '../context/DocumentContext'
-import { AgentFlyout } from './AgentFlyout'
-import type { FlyoutKind } from './AgentFlyout'
-import { generateBlockAtAnchor } from './ai/generateBlock'
+import type { LexicalEditor } from 'lexical'
 
-// Block keys whose slash-menu row opens AgentFlyout beside the list instead
-// of inserting anything itself — "Agent" (all three rows) and "Generate"
-// (just its one row).
-const FLYOUT_KEYS = new Set(['agent', 'ai-generate'])
 import {
   BLOCK_REGISTRY,
   CATEGORY_ORDER,
@@ -92,8 +81,10 @@ function PreselectOnQuery({ enabled, selectedIndex, resetKey, select }: {
 // where a new category (with its heading) starts, so it is not used here: no
 // refs are given to the options. When the item is the first of a category its
 // heading is kept in view too.
-function KeepSelectedVisible({ menuRef, selectedIndex }: { menuRef: { current: HTMLDivElement | null }; selectedIndex: number | null }) {
+function KeepSelectedVisible({ menuRef, selectedIndex, skipRef }: { menuRef: { current: HTMLDivElement | null }; selectedIndex: number | null; skipRef: { current: boolean } }) {
   useLayoutEffect(() => {
+    // The pointer chose this item: the user is already looking at it, so do not scroll.
+    if (skipRef.current) { skipRef.current = false; return }
     const menu = menuRef.current
     const item = menu?.querySelector<HTMLElement>('.slash-menu-item.selected')
     if (!menu || !item) return
@@ -105,7 +96,7 @@ function KeepSelectedVisible({ menuRef, selectedIndex }: { menuRef: { current: H
     const pad = 6
     if (top - pad < menu.scrollTop) menu.scrollTop = Math.max(0, top - pad)
     else if (bottom + pad > menu.scrollTop + menu.clientHeight) menu.scrollTop = bottom + pad - menu.clientHeight
-  }, [menuRef, selectedIndex])
+  }, [menuRef, selectedIndex, skipRef])
   return null
 }
 
@@ -117,29 +108,29 @@ class SlashOption extends MenuOption {
   }
 }
 
+/** True when the caret is on a "/generate" or "/agent" line that starts its paragraph (GenerateLinePlugin's line). */
+function isPromptLineAtCaret(editor: LexicalEditor): boolean {
+  return editor.getEditorState().read(() => {
+    const sel = $getSelection()
+    if (!$isRangeSelection(sel)) return false
+    const top = $getRealTopLevelAncestor(sel.anchor.getNode())
+    return !!top && /^\s*\/(generate|agent)(\s|$)/i.test(top.getTextContent())
+  })
+}
+
 export function SlashCommandPlugin() {
   const [editor] = useLexicalComposerContext()
   const [queryString, setQueryString] = useState<string | null>(null)
   const queryStringRef = useRef<string | null>(null)
-  const { update: updateUI } = useEditorUI()
-  const { setAiState, aiAbortRef } = useDocument()
-  // "AI Agent" opens a submenu beside the list. Run from there is remembered here
-  // so the normal select path can remove the typed "/agent" before starting it.
-  const pendingRunRef = useRef<{ kind: FlyoutKind; prompt: string } | null>(null)
-  // "Generate" (same submenu, see FLYOUT_KEYS): not routed through the AI
-  // Agent panel at all — see generateBlockAtAnchor for why — so it's
-  // remembered separately from the three sentence rows above.
-  const pendingGenerateRef = useRef<{ label: string; topic: string } | null>(null)
-  const focusFlyoutRef = useRef<(() => void) | null>(null)
-  // The submenu opens only when the user goes to "Agent" (hover, or arrow keys),
-  // never just because it is the first item of a freshly opened menu.
-  const [flyoutOpen, setFlyoutOpen] = useState(false)
-  const agentHighlightedRef = useRef(false)
   const menuElRef = useRef<HTMLDivElement>(null)
+  // Set when the highlight moved because the pointer is over an item. Scrolling the list
+  // with the wheel moves items under a resting pointer; scrolling the list back to keep
+  // that item "visible" is what made the menu jump, so only keyboard moves scroll it.
+  const pointerSelectRef = useRef(false)
   // "Type to search…" shown right after a lone "/", like a placeholder.
   const [ghost, setGhost] = useState<{ x: number; y: number; h: number; font: string } | null>(null)
 
-  useEffect(() => { queryStringRef.current = queryString; setFlyoutOpen(false) }, [queryString])
+  useEffect(() => { queryStringRef.current = queryString }, [queryString])
 
   // Measured in a layout effect (no frame of delay): the editor has already put
   // the "/" in the DOM by the time the query arrives. Re-measured on resize/scroll.
@@ -179,22 +170,6 @@ export function SlashCommandPlugin() {
     }
   }, [queryString, editor])
 
-  // Arrow keys count as "going to" an item: run first, never swallow the key
-  // (the typeahead itself moves the highlight). Right on Agent opens its submenu.
-  useEffect(() => {
-    const seen = () => { if (menuVisibleRef.current) setFlyoutOpen(true); return false }
-    return mergeRegister(
-      editor.registerCommand(KEY_ARROW_DOWN_COMMAND, seen, COMMAND_PRIORITY_CRITICAL),
-      editor.registerCommand(KEY_ARROW_UP_COMMAND, seen, COMMAND_PRIORITY_CRITICAL),
-      editor.registerCommand(KEY_ARROW_RIGHT_COMMAND, (e) => {
-        setFlyoutOpen(true)
-        if (!menuVisibleRef.current || !agentHighlightedRef.current) return false
-        e?.preventDefault()
-        requestAnimationFrame(() => focusFlyoutRef.current?.())
-        return true
-      }, COMMAND_PRIORITY_CRITICAL),
-    )
-  }, [editor])
   // Is the menu actually showing something? (The trigger can stay matched while
   // nothing matches the query; Escape must then leave the typed text alone.)
   const menuVisibleRef = useRef(false)
@@ -272,25 +247,7 @@ export function SlashCommandPlugin() {
         block = fresh[0] ?? block
       }
 
-      // "Agent" and "Generate" are submenus: choosing one (Enter / click) moves
-      // into its first blank. Only Run from the submenu goes on to remove the
-      // typed "/agent" or "/generate" and start it. They're remembered in
-      // separate refs — "Agent" goes to the AI Agent panel, "Generate" is
-      // handled directly right here (see generateBlockAtAnchor) — but both
-      // need the same "nothing pending yet → open the flyout" fallback.
-      const run = block.key === 'agent' ? pendingRunRef.current : null
-      const generate = block.key === 'ai-generate' ? pendingGenerateRef.current : null
-      if (FLYOUT_KEYS.has(block.key)) {
-        if (!run && !generate) { setFlyoutOpen(true); requestAnimationFrame(() => focusFlyoutRef.current?.()); return }
-        pendingRunRef.current = null
-        pendingGenerateRef.current = null
-      }
-
       setGhost(null)
-      // Captured while removing "/generate …" below, since that's the exact
-      // spot the generated block must come back to once the AI responds —
-      // not wherever the selection happens to be by then.
-      let generateAnchorKey: string | null = null
       // This callback already runs inside the typeahead's own editor.update, so
       // the "/query" is removed right here. Wrapping it in another editor.update
       // would only queue it until after this one finishes — and blocks that
@@ -321,24 +278,31 @@ export function SlashCommandPlugin() {
             }
           }
         }
-        if (generate) {
+        // "Generate" and "Agent" keep the line as a prompt ("/generate " or "/agent ") with the
+        // caret after it. GenerateLinePlugin lists what can be made under the line, and a prompt
+        // line must start its paragraph, so a paragraph that already has text gets a new one.
+        if (block.key === 'ai-generate' || block.key === 'agent') {
+          const prompt = block.key === 'agent' ? '/agent ' : '/generate '
           const sel2 = $getSelection()
-          const topLevel = $isRangeSelection(sel2) ? $getRealTopLevelAncestor(sel2.anchor.getNode()) : null
-          generateAnchorKey = topLevel?.getKey() ?? null
+          if ($isRangeSelection(sel2)) {
+            const top = $getRealTopLevelAncestor(sel2.anchor.getNode())
+            if (top && top.getTextContent() !== '') {
+              const next = $createParagraphNode()
+              next.append($createTextNode(prompt))
+              top.insertAfter(next)
+              next.selectEnd()
+            } else {
+              sel2.insertText(prompt)
+            }
+          }
+          closeMenu()
+          return
         }
         closeMenu()
       }
-      if (run) {
-        updateUI({ agent: { id: Date.now(), run }, activeMath: null, activeModel3d: null })
-        return
-      }
-      if (generate) {
-        if (generateAnchorKey) void generateBlockAtAnchor(editor, generateAnchorKey, generate.label, generate.topic, { setAiState, aiAbortRef })
-        return
-      }
       block.insert(editor)
     },
-    [editor, updateUI, setAiState, aiAbortRef],
+    [editor],
   )
 
   return (
@@ -357,6 +321,9 @@ export function SlashCommandPlugin() {
       options={options}
       menuRenderFn={(anchorElementRef, { selectedIndex, selectOptionAndCleanUp, setHighlightedIndex }) => {
         if (!anchorElementRef.current) return null
+        // "/generate" and "/agent" lines belong to GenerateLinePlugin, so the menu stays hidden over them.
+        // (The trigger itself keeps matching: returning null from triggerFn leaves the menu's query stale.)
+        if (isPromptLineAtCaret(editor)) { menuVisibleRef.current = false; return null }
         if (allMatchingBlocks.length === 0) { menuVisibleRef.current = false; return null }
 
         menuVisibleRef.current = true
@@ -377,12 +344,6 @@ export function SlashCommandPlugin() {
         // Track index into the `options` array (only available blocks) for keyboard highlight
         let availableIdx = 0
 
-        const highlightedKey = options[selectedIndex ?? -1]?.block.key
-        const flyoutHighlighted = Boolean(highlightedKey && FLYOUT_KEYS.has(highlightedKey))
-        const flyoutOption = flyoutHighlighted ? options.find(o => o.block.key === highlightedKey) : undefined
-        agentHighlightedRef.current = flyoutHighlighted
-        const showFlyout = Boolean(flyoutOption) && flyoutOpen
-
         return createPortal(
           <div className="slash-menu-wrap">
           <PreselectOnQuery
@@ -391,7 +352,7 @@ export function SlashCommandPlugin() {
             resetKey={searchQuery}
             select={setHighlightedIndex}
           />
-          <KeepSelectedVisible menuRef={menuElRef} selectedIndex={selectedIndex} />
+          <KeepSelectedVisible menuRef={menuElRef} selectedIndex={selectedIndex} skipRef={pointerSelectRef} />
           <div className="slash-menu" ref={menuElRef}>
             {groups.map(group => (
               <div key={group.cat}>
@@ -409,8 +370,7 @@ export function SlashCommandPlugin() {
                             // Only a real mouse move counts. A menu that appears under a resting
                             // pointer fires mouseenter without any movement.
                             if (!e.movementX && !e.movementY) return
-                            if (myIdx !== selectedIndex) setHighlightedIndex(myIdx)
-                            if (FLYOUT_KEYS.has(block.key)) setFlyoutOpen(true)
+                            if (myIdx !== selectedIndex) { pointerSelectRef.current = true; setHighlightedIndex(myIdx) }
                           }}
                           onClick={() => {
                             const opt = options[myIdx]
@@ -442,23 +402,6 @@ export function SlashCommandPlugin() {
               </div>
             ))}
           </div>
-          {showFlyout && flyoutOption && (
-            <AgentFlyout
-              rows={highlightedKey === 'ai-generate' ? ['generate'] : undefined}
-              focusRef={focusFlyoutRef}
-              onBack={() => editor.focus()}
-              onRun={(kind, prompt) => {
-                pendingRunRef.current = { kind, prompt }
-                // Focus is in a blank; bring the editor's selection back so the typed "/agent" can be removed.
-                editor.focus(() => selectOptionAndCleanUp(flyoutOption))
-              }}
-              onGenerate={(label, topic) => {
-                pendingGenerateRef.current = { label, topic }
-                // Focus is in a blank; bring the editor's selection back so the typed "/generate" can be removed.
-                editor.focus(() => selectOptionAndCleanUp(flyoutOption))
-              }}
-            />
-          )}
           </div>,
           anchorElementRef.current,
         )
