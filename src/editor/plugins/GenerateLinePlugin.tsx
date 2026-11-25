@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
+  $createParagraphNode,
   $createTextNode,
   $getNodeByKey,
   $getSelection,
@@ -104,6 +105,7 @@ export function ghostFor(rest: string, variantIdx: number, cmd: Cmd = 'generate'
   return null
 }
 
+interface Review { key: string; choice: GenerateChoice; topic: string }
 interface Active { key: string; rest: string; cmd: Cmd }
 
 export function GenerateLinePlugin() {
@@ -117,9 +119,13 @@ export function GenerateLinePlugin() {
   const [dismissed, setDismissed] = useState(false)
   // The line whose generation is running: shown as "Generating …" on that empty line.
   const [busy, setBusy] = useState<{ key: string; label: string; topic: string } | null>(null)
+  // The block that was just written and is waiting for Accept / Regenerate / Edit / Discard.
+  const [review, setReview] = useState<Review | null>(null)
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; caretX: number; caretY: number; caretH: number } | null>(null)
 
   // Command handlers are registered once, so they read the latest state from here.
+  const reviewRef = useRef<Review | null>(null)
+  reviewRef.current = review
   const live = useRef({ active, idx, variantIdx, expanded, dismissed })
   live.current = { active, idx, variantIdx, expanded, dismissed }
   const hooks = useRef({ activeDocId, setAiState, aiAbortRef, updateUI })
@@ -213,6 +219,24 @@ export function GenerateLinePlugin() {
     if (c) setLine(a.key, a.cmd, `${nameOf(c)} for `)
   }, [setLine])
 
+  // Writes one block on the empty line `anchorKey`, then leaves it up for review.
+  const startGenerate = useCallback((anchorKey: string, choice: GenerateChoice, topic: string) => {
+    const h = hooks.current
+    setReview(null)
+    // The empty line shows progress (see BusyLine); the side panel is left alone.
+    setBusy({ key: anchorKey, label: choice.label, topic })
+    // A line near the bottom edge would show its progress half cut off: bring it up first.
+    const line = editor.getElementByKey(anchorKey)
+    if (line && line.getBoundingClientRect().bottom > window.innerHeight - 200) line.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    void generateBlockAtAnchor(editor, anchorKey, choice, topic, { docId: h.activeDocId, setAiState: h.setAiState, aiAbortRef: h.aiAbortRef })
+      .then(key => {
+        setBusy(null)
+        if (!key) return
+        reveal(editor, key)
+        setReview({ key, choice, topic })
+      })
+  }, [editor])
+
   const run = useCallback((a: Active, item: Item, topic: string) => {
     editor.update(() => {
       const p = $getNodeByKey(a.key)
@@ -224,19 +248,33 @@ export function GenerateLinePlugin() {
       h.updateUI({ agent: { id: Date.now(), run: { kind: item.kind, prompt: topic } }, activeMath: null, activeModel3d: null })
       return
     }
-    const choice = item.choice
-    if (!choice) return
-    // The empty line shows progress (see BusyLine); the side panel is left alone.
-    setBusy({ key: a.key, label: choice.label, topic })
-    // A line near the bottom edge would show its progress half cut off: bring it up first.
-    const line = editor.getElementByKey(a.key)
-    if (line && line.getBoundingClientRect().bottom > window.innerHeight - 200) line.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    void generateBlockAtAnchor(editor, a.key, choice, topic, { docId: h.activeDocId, setAiState: h.setAiState, aiAbortRef: h.aiAbortRef })
-      .then(key => {
-        setBusy(null)
-        if (key) reveal(editor, key)
-      })
-  }, [editor])
+    if (item.choice) startGenerate(a.key, item.choice, topic)
+  }, [editor, startGenerate])
+
+  // Accept keeps the block; Regenerate / Edit prompt / Discard take it out again.
+  const reviewAct = useCallback((act: 'accept' | 'regen' | 'edit' | 'discard') => {
+    const r = reviewRef.current
+    if (!r) return
+    if (act === 'accept') {
+      setReview(null)
+      const el = editor.getElementByKey(r.key)
+      if (el) { el.classList.add('gl-accepted'); setTimeout(() => el.classList.remove('gl-accepted'), 1200) }
+      return
+    }
+    let lineKey: string | null = null
+    editor.update(() => {
+      const node = $getNodeByKey(r.key)
+      if (!node) return
+      const line = $createParagraphNode()
+      if (act === 'edit') line.append($createTextNode(`/generate ${r.choice.label.toLowerCase()} for ${r.topic}`))
+      node.replace(line)
+      lineKey = line.getKey()
+      if (act === 'regen') return
+      line.selectEnd()
+    })
+    setReview(null)
+    if (act === 'regen' && lineKey) startGenerate(lineKey, r.choice, r.topic)
+  }, [editor, startGenerate])
 
   const submit = useCallback(() => {
     const { active: a, variantIdx: vi } = live.current
@@ -295,7 +333,8 @@ export function GenerateLinePlugin() {
     }
   }, [editor, pick, submit, setLine])
 
-  if (!active || !pos) return busy ? <BusyLine editor={editor} busy={busy} /> : null
+  const reviewBar = review ? <ReviewBar editor={editor} review={review} onAct={reviewAct} /> : null
+  if (!active || !pos) return <>{busy && <BusyLine editor={editor} busy={busy} />}{reviewBar}</>
   // Once a complete type and topic are on the line, say what Enter will do, so the line never looks dead.
   const topicNow = (parsed.topic ?? '').trim()
   const readyLabel = parsed.choice && topicNow
@@ -308,6 +347,7 @@ export function GenerateLinePlugin() {
   return createPortal(
     <>
       {busy && <BusyLine editor={editor} busy={busy} />}
+      {reviewBar}
       {ghost && (
         <span
           className="slash-ghost gl-ghost"
@@ -398,6 +438,39 @@ function BusyLine({ editor, busy }: { editor: LexicalEditor; busy: { key: string
     <div className="gl-busy" style={{ left: rect.left, top: rect.top, width: rect.width }} role="status">
       <span className="gl-busy-dot" aria-hidden="true" />
       Generating {busy.label.toLowerCase()} for {busy.topic}…
+    </div>,
+    document.body,
+  )
+}
+
+/** Outlines the freshly written block and puts Accept / Regenerate / Edit prompt / Discard under it. */
+function ReviewBar({ editor, review, onAct }: { editor: LexicalEditor; review: Review; onAct: (a: 'accept' | 'regen' | 'edit' | 'discard') => void }) {
+  const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null)
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = editor.getElementByKey(review.key)
+      if (!el) { setRect(null); return }
+      const r = el.getBoundingClientRect()
+      setRect({ left: r.left, top: Math.min(r.bottom + 8, window.innerHeight - 56), width: r.width })
+    }
+    editor.getElementByKey(review.key)?.classList.add('gl-pending')
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    const off = editor.registerUpdateListener(() => { requestAnimationFrame(measure) })
+    return () => {
+      window.removeEventListener('scroll', measure, true); window.removeEventListener('resize', measure); off()
+      editor.getElementByKey(review.key)?.classList.remove('gl-pending')
+    }
+  }, [editor, review.key])
+  if (!rect) return null
+  return createPortal(
+    <div className="gl-review" style={{ left: rect.left, top: rect.top, width: rect.width }} role="group" aria-label={`${review.choice.label} draft`}>
+      <button type="button" className="gl-btn primary" onClick={() => onAct('accept')}>✓ Accept</button>
+      <button type="button" className="gl-btn" onClick={() => onAct('regen')}>↻ Regenerate</button>
+      <button type="button" className="gl-btn" onClick={() => onAct('edit')}>✎ Edit prompt</button>
+      <span className="gl-grow" />
+      <button type="button" className="gl-btn" onClick={() => onAct('discard')}>Discard</button>
     </div>,
     document.body,
   )
