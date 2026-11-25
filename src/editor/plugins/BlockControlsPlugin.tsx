@@ -12,6 +12,7 @@ import {
 } from 'lexical'
 import type { ElementNode, LexicalNode, NodeKey } from 'lexical'
 import { setSelectedBlockKey } from '../blockSelection'
+import { dragLabel, dropSlot, edgeScrollSpeed, isNoopSlot, slotLineY } from './blockDrag'
 
 function $cloneNodeShallow(node: LexicalNode): LexicalNode {
   // Each Lexical node class has a static clone method
@@ -51,24 +52,26 @@ interface CtrlPos {
   left: number  // viewport-relative, left edge of block
 }
 
-interface DropLine {
-  top: number    // viewport-relative
-  left: number
-  width: number
+/** The handle sits level with the block's first line, so on a tall block it is never far from the top. */
+function controlTop(rect: DOMRect): number {
+  return rect.top + Math.min(rect.height / 2, 24)
 }
 
 export function BlockControlsPlugin() {
   const [editor] = useLexicalComposerContext()
   const [ctrlPos, setCtrlPos] = useState<CtrlPos | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [dropLine, setDropLine] = useState<DropLine | null>(null)
+  // Dragging: the line and the floating preview are moved by hand each frame (no React renders per move).
+  const [dragging, setDragging] = useState(false)
+  const [ghostLabel, setGhostLabel] = useState('')
+  const lineRef = useRef<HTMLDivElement>(null)
+  const ghostRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
   const nodeKeyRef = useRef<NodeKey | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const menuOpenRef = useRef(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rootCleanupRef = useRef<(() => void) | null>(null)
-  const draggedKeyRef = useRef<NodeKey | null>(null)
-  const dropTargetRef = useRef<{ key: NodeKey; position: 'before' | 'after' } | null>(null)
   const selectedKeyRef = useRef<NodeKey | null>(null)
   // The highlight lives on the real block element itself (a CSS class), not a
   // separately-positioned overlay — a `position: fixed` box computed once at
@@ -121,11 +124,11 @@ export function BlockControlsPlugin() {
   const scheduleHide = useCallback(() => {
     cancelHide()
     hideTimerRef.current = setTimeout(() => {
-      if (!menuOpenRef.current) {
+      if (!menuOpenRef.current && !draggingRef.current) {
         setCtrlPos(null)
         nodeKeyRef.current = null
       }
-    }, 280)
+    }, 500) // long enough to cross the gap between a block and its handle
   }, [cancelHide])
 
   useEffect(() => {
@@ -180,7 +183,7 @@ export function BlockControlsPlugin() {
         nodeKeyRef.current = foundKey
         const rect = elem.getBoundingClientRect()
         setCtrlPos({
-          top: rect.top + rect.height / 2,
+          top: controlTop(rect),
           left: rect.left,
         })
       }
@@ -234,7 +237,7 @@ export function BlockControlsPlugin() {
             if (foundKey) {
               nodeKeyRef.current = foundKey
               const rect = elem.getBoundingClientRect()
-              setCtrlPos({ top: rect.top + rect.height / 2, left: rect.left })
+              setCtrlPos({ top: controlTop(rect), left: rect.left })
             } else {
               scheduleHide()
             }
@@ -396,19 +399,24 @@ export function BlockControlsPlugin() {
     setCtrlPos(null)
   }, [editor])
 
-  const performDrop = useCallback(() => {
-    const draggedKey = draggedKeyRef.current
-    const target = dropTargetRef.current
-    draggedKeyRef.current = null
-    dropTargetRef.current = null
-    setDropLine(null)
-    if (!draggedKey || !target) return
+  // Moves one block, then lets every block that shifted glide to its new place (FLIP):
+  // measure before, let Lexical update the DOM, measure after, and animate the difference.
+  const moveBlock = useCallback((draggedKey: NodeKey, target: { key: NodeKey; position: 'before' | 'after' }, keys: NodeKey[]) => {
     // Moving a block must not scroll the page: Lexical would otherwise
     // scroll the old caret position back into view, which looked like the
     // whole screen jumping. Keep the scroll position exactly as it was.
-    const root = rootElRef.current
-    const scroller = root?.closest('.editor-area-scroll') as HTMLElement | null
+    const scroller = rootElRef.current?.closest('.editor-area-scroll') as HTMLElement | null
     const top = scroller?.scrollTop ?? 0
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const before = new Map<NodeKey, number>()
+    if (!calm) {
+      const view = scroller?.getBoundingClientRect()
+      for (const k of keys) {
+        const r = editor.getElementByKey(k)?.getBoundingClientRect()
+        // Only what is on screen (plus a margin) is animated: the rest cannot be seen moving.
+        if (r && (!view || (r.bottom > view.top - 160 && r.top < view.bottom + 160))) before.set(k, r.top)
+      }
+    }
     editor.update(() => {
       const draggedNode = $getNodeByKey(draggedKey)
       const targetNode = $getNodeByKey(target.key)
@@ -418,87 +426,151 @@ export function BlockControlsPlugin() {
       } else {
         targetNode.insertAfter(draggedNode)
       }
-    }, { tag: 'skip-scroll-into-view', onUpdate: () => { if (scroller) scroller.scrollTop = top } })
+    }, {
+      tag: 'skip-scroll-into-view',
+      onUpdate: () => {
+        if (scroller) scroller.scrollTop = top
+        before.forEach((oldTop, k) => {
+          const el = editor.getElementByKey(k)
+          if (!el) return
+          const dy = oldTop - el.getBoundingClientRect().top
+          if (Math.abs(dy) > 1) {
+            el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' })
+          }
+        })
+        const dropped = editor.getElementByKey(draggedKey)
+        if (dropped) {
+          dropped.classList.add('block-dropped')
+          setTimeout(() => dropped.classList.remove('block-dropped'), 900)
+        }
+      },
+    })
   }, [editor])
 
   // Drag-to-reorder, driven entirely by Pointer Events (not native HTML5
   // drag-and-drop) so the same code path works for mouse, pen, and touch —
   // native `draggable`/dragstart never fires from a touch gesture on
   // mobile browsers. Pointer capture on the handle itself means move/up
-  // keep firing on it no matter where the finger/cursor actually is, so
-  // `document.elementFromPoint` is used to find what's really underneath.
+  // keep firing on it no matter where the finger/cursor actually is.
+  //
+  // What makes it feel smooth:
+  //  - the drop gap comes from the pointer's height alone (dropSlot), so it never flickers off
+  //    in the margins between blocks or beside the page;
+  //  - one animation frame does all the work: scroll near an edge, measure, move the line and
+  //    the floating preview (no React render per pointer move);
+  //  - the dragged block dims, a small preview follows the pointer, the line glides between gaps;
+  //  - the page scrolls by itself near the top and bottom edge, so a long document is reachable;
+  //  - on drop the blocks that shifted slide into place instead of jumping. Escape cancels.
   const handleDragPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     const key = nodeKeyRef.current
-    if (!key) return
+    const root = rootElRef.current
+    if (!key || !root) return
     e.preventDefault()
     e.stopPropagation()
+
+    const blocks: { key: NodeKey; el: HTMLElement }[] = []
+    editor.getEditorState().read(() => {
+      for (const child of $getRoot().getChildren()) {
+        const el = editor.getElementByKey(child.getKey())
+        if (el) blocks.push({ key: child.getKey(), el })
+      }
+    })
+    const draggedKey: NodeKey = key
+    const from = blocks.findIndex(b => b.key === draggedKey)
+    if (from < 0) return
+
     const handle = e.currentTarget
     handle.setPointerCapture(e.pointerId)
-    draggedKeyRef.current = key
+    draggingRef.current = true
     setMenuOpen(false)
+
+    const scroller = root.closest('.editor-area-scroll') as HTMLElement | null
     const startX = e.clientX
     const startY = e.clientY
+    const touch = e.pointerType === 'touch'
+    let x = startX
+    let y = startY
     let moved = false // a plain tap/click (no movement) should open the menu, not "drop"
+    let frame = 0
 
-    function updateDropTarget(clientX: number, clientY: number) {
-      const root = rootElRef.current
-      if (!root) return
-      const elem = resolveBlockElement(root, document.elementFromPoint(clientX, clientY))
-      if (!elem) { setDropLine(null); dropTargetRef.current = null; return }
-
-      let targetKey: NodeKey | null = null
-      editor.getEditorState().read(() => {
-        for (const child of $getRoot().getChildren()) {
-          if (editor.getElementByKey(child.getKey()) === elem) {
-            targetKey = child.getKey()
-            break
-          }
-        }
-      })
-      if (!targetKey || targetKey === draggedKeyRef.current) {
-        setDropLine(null)
-        dropTargetRef.current = null
-        return
+    function tick() {
+      frame = requestAnimationFrame(tick)
+      const area = scroller?.getBoundingClientRect()
+      if (scroller && area) {
+        const dy = edgeScrollSpeed(y, area.top, area.bottom)
+        if (dy) scroller.scrollTop += dy
       }
-      const rect = elem.getBoundingClientRect()
-      const before = clientY < rect.top + rect.height / 2
-      dropTargetRef.current = { key: targetKey, position: before ? 'before' : 'after' }
-      setDropLine({ top: before ? rect.top : rect.bottom, left: rect.left, width: rect.width })
+      const rects = blocks.map(b => b.el.getBoundingClientRect())
+      const slot = dropSlot(rects, y)
+      const line = lineRef.current
+      if (line) {
+        if (isNoopSlot(slot, from)) {
+          line.classList.remove('on')
+        } else {
+          const ref = rects[Math.min(slot, rects.length - 1)]
+          line.style.width = `${ref.width}px`
+          line.style.transform = `translate3d(${ref.left}px, ${slotLineY(rects, slot) - 1.5}px, 0)`
+          line.classList.add('on')
+        }
+      }
+      const ghost = ghostRef.current
+      // A finger would hide the preview, so on touch it rides above it.
+      if (ghost) ghost.style.transform = `translate3d(${x + 14}px, ${touch ? y - 64 : y + 14}px, 0)`
     }
 
+    function startDrag() {
+      moved = true
+      blocks[from].el.classList.add('block-dragging')
+      document.body.classList.add('is-block-dragging')
+      setGhostLabel(dragLabel(blocks[from].el.textContent ?? ''))
+      setDragging(true)
+      frame = requestAnimationFrame(tick)
+    }
     function move(ev: PointerEvent) {
-      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) moved = true
-      if (moved) updateDropTarget(ev.clientX, ev.clientY)
+      x = ev.clientX
+      y = ev.clientY
+      if (!moved && Math.hypot(x - startX, y - startY) > 4) startDrag()
     }
     function cleanup() {
+      cancelAnimationFrame(frame)
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', end)
       handle.removeEventListener('pointercancel', cancelDrag)
+      window.removeEventListener('keydown', onKey)
+      blocks[from].el.classList.remove('block-dragging')
+      document.body.classList.remove('is-block-dragging')
+      draggingRef.current = false
+      setDragging(false)
     }
     function end() {
+      // Measured again here, not taken from the last frame, so a quick release is exact.
+      const slot = dropSlot(blocks.map(b => b.el.getBoundingClientRect()), y)
       cleanup()
-      if (moved) {
-        // The click event that follows this pointerup would otherwise toggle
-        // the actions menu open right after a real drag.
-        suppressClickRef.current = true
-        performDrop()
-      } else {
-        draggedKeyRef.current = null
-        dropTargetRef.current = null
-      }
+      if (!moved) return
+      // The click event that follows this pointerup would otherwise toggle
+      // the actions menu open right after a real drag.
+      suppressClickRef.current = true
+      if (isNoopSlot(slot, from)) return
+      const keys = blocks.map(b => b.key)
+      moveBlock(draggedKey, slot < blocks.length ? { key: blocks[slot].key, position: 'before' } : { key: blocks[blocks.length - 1].key, position: 'after' }, keys)
     }
     function cancelDrag() {
+      cleanup() // pointercancel: the browser took the gesture over, and no click follows
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key !== 'Escape') return
+      ev.preventDefault()
       cleanup()
-      draggedKeyRef.current = null
-      dropTargetRef.current = null
-      setDropLine(null)
+      // Escape comes before the pointerup, and a click still follows it: keep that click from opening the menu.
+      if (moved) suppressClickRef.current = true
     }
     handle.addEventListener('pointermove', move)
     handle.addEventListener('pointerup', end)
     handle.addEventListener('pointercancel', cancelDrag)
-  }, [editor, performDrop])
+    window.addEventListener('keydown', onKey)
+  }, [editor, moveBlock])
 
-  if (!ctrlPos && !dropLine) return null
+  if (!ctrlPos && !dragging) return null
 
   const CTRL_WIDTH = 52  // combined width of both buttons + gap
   const CTRL_GAP = 4
@@ -587,11 +659,14 @@ export function BlockControlsPlugin() {
         </div>
       )}
 
-      {dropLine && (
-        <div
-          className="block-drop-indicator"
-          style={{ top: dropLine.top, left: dropLine.left, width: dropLine.width }}
-        />
+      {dragging && (
+        <>
+          <div ref={lineRef} className="block-drop-indicator" aria-hidden="true" />
+          <div ref={ghostRef} className="block-drag-ghost" style={{ transform: 'translate3d(-9999px, -9999px, 0)' }} aria-hidden="true">
+            <GridDotsIcon />
+            <span>{ghostLabel}</span>
+          </div>
+        </>
       )}
     </>,
     document.body,

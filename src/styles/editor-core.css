@@ -401,13 +401,75 @@
   cursor: grabbing;
 }
 
+.block-ctrl-btn { position: relative; }
+/* A hit area bigger than the visible button: the handle is easier to reach and to grab. */
+.block-ctrl-btn::before { content: ''; position: absolute; inset: -5px; }
+
+/* While dragging: the block being moved dims, the cursor stays a grabbing hand and text is not selected. */
+.block-dragging { opacity: 0.38; transition: opacity 0.15s ease; }
+body.is-block-dragging, body.is-block-dragging * { cursor: grabbing !important; user-select: none !important; }
+
+/* The drop line glides between gaps (moved by transform each frame) instead of jumping. */
 .block-drop-indicator {
   position: fixed;
+  top: 0;
+  left: 0;
   height: 3px;
   border-radius: 2px;
   background: var(--c-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 16%, transparent);
   z-index: 120;
   pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.12s ease, opacity 0.1s ease;
+}
+.block-drop-indicator.on { opacity: 1; }
+.block-drop-indicator::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -2.5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-accent);
+}
+
+/* The small preview that follows the pointer. */
+.block-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 300px;
+  padding: 7px 12px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-accent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 500;
+  pointer-events: none;
+  will-change: transform;
+}
+.block-drag-ghost svg { flex: none; color: var(--c-accent); }
+.block-drag-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The block that was just dropped: a ring that fades, so the eye finds where it landed. */
+.block-dropped { animation: block-dropped 0.9s ease; border-radius: var(--r-md, 8px); }
+@keyframes block-dropped {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-accent) 40%, transparent); }
+  100% { box-shadow: 0 0 0 12px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .block-drop-indicator { transition: none; }
+  .block-dragging { transition: none; }
+  .block-dropped { animation: none; }
 }
 
 /* Applied straight to the clicked block's own element rather than a
