@@ -162,6 +162,8 @@ export interface AiRequest {
   /** Text of the existing document, when generating from it. */
   context?: string
   kind: AiKind
+  /** Documents the teacher attached ("/agent workbook from a file"): name and text, never the file. */
+  sources?: { name: string; text: string }[]
 }
 
 /** A block the AI produced (already checked and cleaned by the server). */

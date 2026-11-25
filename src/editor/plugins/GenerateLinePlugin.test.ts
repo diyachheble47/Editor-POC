@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ghostFor, parse } from './GenerateLinePlugin'
+import { fileRequest, ghostFor, parse } from './GenerateLinePlugin'
 
 describe('/generate line parsing', () => {
   it('finds nothing in free text or a half-typed type', () => {
@@ -55,5 +55,32 @@ describe('/agent line', () => {
   it('suggests " for" after a bare document kind, and no hint after it', () => {
     expect(ghostFor('workbook', 0, 'agent')).toMatchObject({ text: ' for', full: 'workbook for ' })
     expect(ghostFor('lesson plan for ', 0, 'agent')).toBeNull()
+  })
+})
+
+describe('/agent ... from a file', () => {
+  it('offers "for" and "from a file" after an agent type, and Up/Down switches between them', () => {
+    expect(ghostFor('workbook', 0, 'agent')).toMatchObject({ text: ' for', count: 2 })
+    expect(ghostFor('workbook', 1, 'agent')).toMatchObject({ text: ' from a file', full: 'workbook from a file', count: 2 })
+    expect(ghostFor('workbook ', 1, 'agent')).toMatchObject({ text: 'from a file' })
+  })
+
+  it('completes a half-typed "from a file", and offers only what the typing leads to', () => {
+    expect(ghostFor('workbook fr', 0, 'agent')).toMatchObject({ text: 'om a file', count: 1 })
+    expect(ghostFor('workbook from a', 0, 'agent')).toMatchObject({ text: ' file' })
+    expect(ghostFor('workbook fo', 0, 'agent')).toMatchObject({ text: 'r ', full: 'workbook for ' })
+    expect(ghostFor('workbook from a file', 0, 'agent')).toBeNull()
+  })
+
+  it('does not offer a file for /generate, which makes one block', () => {
+    expect(ghostFor('quiz', 1, 'generate')).toMatchObject({ text: ' for', count: 1 })
+  })
+
+  it('reads what follows "from"', () => {
+    expect(fileRequest('workbook from a file')).toMatchObject({ choice: { kind: 'workbook' }, from: 'a file' })
+    expect(fileRequest('lesson plan from Notes.pdf, only chapter 2')).toMatchObject({ choice: { kind: 'lesson_plan' }, from: 'Notes.pdf, only chapter 2' })
+    expect(fileRequest('workbook from')).toMatchObject({ from: '' })
+    expect(fileRequest('workbook for fractions')).toBeNull()
+    expect(fileRequest('workbook')).toBeNull()
   })
 })

@@ -5,7 +5,7 @@ from typing import AsyncIterator, Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .. import gemini
 from ..ai_blocks import MAX_BLOCKS, clean_html, parse_block_line
@@ -17,6 +17,18 @@ log = logging.getLogger("notebook.ai")
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
+MAX_SOURCES = 3
+MAX_SOURCE_CHARS = 120_000
+MAX_SOURCES_TOTAL = 150_000
+
+
+class SourceText(BaseModel):
+    """A document the teacher attached; only its text is ever sent here."""
+
+    name: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=MAX_SOURCE_CHARS)
+
+
 class GenerateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
@@ -24,6 +36,14 @@ class GenerateRequest(BaseModel):
     # built from it instead of from the title alone.
     context: str = Field(default="", max_length=30000)
     kind: Literal["workbook", "lesson_plan", "lesson", "edit"]
+    # Documents to write from ("/agent workbook from a file").
+    sources: list[SourceText] = Field(default_factory=list, max_length=MAX_SOURCES)
+
+    @model_validator(mode="after")
+    def _sources_fit(self):
+        if sum(len(s.text) for s in self.sources) > MAX_SOURCES_TOTAL:
+            raise ValueError("The attached documents are too long.")
+        return self
 
 
 class HtmlRequest(BaseModel):
@@ -92,15 +112,16 @@ async def generate(body: GenerateRequest):
         raise HTTPException(422, "Editing needs an instruction.")
 
     typing_delay = int(os.getenv("AI_TYPING_DELAY_MS", "15")) / 1000
-    system = build_system_prompt(body.kind)
-    user = build_user_prompt(body.title, body.description, body.context, body.kind)
+    sources = tuple((s.name, s.text) for s in body.sources) if body.kind != "edit" else ()
+    system = build_system_prompt(body.kind, from_sources=bool(sources))
+    user = build_user_prompt(body.title, body.description, body.context, body.kind, sources)
 
     async def events():
         n = 0
         blocks = 0
         html_blocks = 0
         # What the document is about so far: the request, then the text as it is written.
-        seen = f"{body.title} {body.description} {body.context[:5000]}"
+        seen = f"{body.title} {body.description} {body.context[:5000]} " + " ".join(t[:5000] for _, t in sources)
 
         def frame(event: dict) -> bytes:
             nonlocal n

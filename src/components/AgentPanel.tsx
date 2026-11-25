@@ -209,7 +209,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   // (confirmed live: it silently drops every block after the cut) loses
   // whatever the model hadn't gotten to yet, which is worse than the
   // problem this is fixing.
-  const send = useCallback(async (kind: AiKind, rawPrompt: string, allowEmptyEdit = false, singleBlock = false) => {
+  const send = useCallback(async (kind: AiKind, rawPrompt: string, allowEmptyEdit = false, singleBlock = false, sources?: { name: string; text: string }[]) => {
     const prompt = rawPrompt.trim()
     if (!prompt || abortRef.current) return
     const empty = isDocEmpty(mainEditor)
@@ -242,8 +242,8 @@ export function AgentPanel({ session }: { session: AgentSession }) {
       ? { title: docTitle.trim() || 'Untitled', kind, context: edit.text,
           description: scoped ? `${prompt}\n\nThe teacher selected this text. Apply the instruction to the blocks given (the selected part) only: "${scoped.text}"` : prompt }
       : direct
-        ? { title: prompt.slice(0, 120), description: prompt.length > 120 ? prompt : '', kind }
-        : { title: docTitle.trim() || 'Untitled', description: prompt, kind }
+        ? { title: prompt.slice(0, 120), description: prompt.length > 120 ? prompt : '', kind, sources }
+        : { title: docTitle.trim() || 'Untitled', description: prompt, kind, sources }
 
     const ai = new AbortController()
     abortRef.current = ai
@@ -344,7 +344,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   useEffect(() => {
     if (!loaded || !session.run || startedRef.current) return
     startedRef.current = true
-    void send(session.run.kind, session.run.prompt, session.run.allowEmpty, session.run.singleBlock)
+    void send(session.run.kind, session.run.prompt, session.run.allowEmpty, session.run.singleBlock, session.run.sources)
   }, [loaded, session.run, send])
 
   function accept() {

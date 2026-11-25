@@ -21,6 +21,8 @@ import { useDocument } from '../../context/DocumentContext'
 import { $getRealTopLevelAncestor } from '../blockRegistry'
 import { generateBlockAtAnchor } from '../ai/generateBlock'
 import { GENERATE_CHOICES } from '../ai/generateChoices'
+import { chooseSourceFile, describeSource, knownSources, matchSource, readSourceFile, rememberSource, SourceError } from '../ai/sourceFiles'
+import type { SourceFile } from '../ai/sourceFiles'
 import type { GenerateChoice } from '../ai/generateChoices'
 import type { LexicalEditor } from 'lexical'
 
@@ -32,6 +34,7 @@ import type { LexicalEditor } from 'lexical'
 //  - /generate: Enter inserts exactly one block where the line was (generateBlockAtAnchor).
 //  - /agent: Enter starts the AI Agent panel, which writes a whole workbook, lesson or
 //    lesson plan and asks for Accept before anything lands in the document.
+//    "/agent workbook from a file" opens the file dialog; the chosen file's text is what the AI writes from.
 // Grey text after the caret suggests the next word: " for", or a variant such as
 // "series". Tab accepts it, Up/Down cycle through variants.
 //
@@ -92,10 +95,38 @@ export function parse(rest: string, cmd: Cmd = 'generate'): Parsed {
 
 export interface Ghost { text: string; full: string | null; count: number }
 
+const FILE_PHRASE = 'from a file'
+
+/** "/agent workbook from <file>": the text after "from ", or null when the line is not a "from" line. */
+export function fileRequest(rest: string): { choice: Item; from: string } | null {
+  const { choice, topic } = parse(rest, 'agent')
+  if (!choice || topic !== null) return null
+  const tail = rest.replace(/^\s+/, '').slice(nameOf(choice).length)
+  const m = tail.match(/^\s+from(?:\s+([\s\S]*))?$/i)
+  return m ? { choice, from: (m[1] ?? '').trim() } : null
+}
+
+/** Grey suggestions after an agent type: " for <topic>" or " from a file", whichever the typing leads to. */
+function agentGhost(choice: Item, rest: string, variantIdx: number): Ghost | null {
+  const name = nameOf(choice)
+  const tail = rest.replace(/^\s+/, '').slice(name.length)
+  const typed = tail.replace(/^\s+/, '').toLowerCase()
+  const options: { text: string; full: string }[] = []
+  if (typed === '') options.push({ text: /\s$/.test(rest) ? 'for ' : ' for', full: `${name} for ` })
+  else if ('for '.startsWith(typed) && typed !== 'for') options.push({ text: 'for '.slice(typed.length), full: `${name} for ` })
+  if (typed === '') options.push({ text: /\s$/.test(rest) ? FILE_PHRASE : ` ${FILE_PHRASE}`, full: `${name} ${FILE_PHRASE}` })
+  else if (FILE_PHRASE.startsWith(typed) && typed !== FILE_PHRASE) options.push({ text: FILE_PHRASE.slice(typed.length), full: `${name} ${FILE_PHRASE}` })
+  if (!options.length) return null
+  return { ...options[variantIdx % options.length], count: options.length }
+}
+
 export function ghostFor(rest: string, variantIdx: number, cmd: Cmd = 'generate'): Ghost | null {
   const { choice, topic } = parse(rest, cmd)
   if (!choice) return null
-  if (topic === null) return { text: /\s$/.test(rest) ? 'for ' : ' for', full: `${nameOf(choice)} for `, count: 1 }
+  if (topic === null) {
+    if (cmd === 'agent') return agentGhost(choice, rest, variantIdx)
+    return { text: /\s$/.test(rest) ? 'for ' : ' for', full: `${nameOf(choice)} for `, count: 1 }
+  }
   const variants = cmd === 'generate' ? (VARIANTS[nameOf(choice)] ?? []) : []
   const options = variants.filter(v => v.startsWith(topic.toLowerCase()) && v.length > topic.length)
   if (options.length) {
@@ -105,8 +136,8 @@ export function ghostFor(rest: string, variantIdx: number, cmd: Cmd = 'generate'
   return null
 }
 
-interface Review { key: string; choice: GenerateChoice; topic: string }
 interface Active { key: string; rest: string; cmd: Cmd }
+interface Review { key: string; choice: GenerateChoice; topic: string }
 
 export function GenerateLinePlugin() {
   const [editor] = useLexicalComposerContext()
@@ -121,6 +152,10 @@ export function GenerateLinePlugin() {
   const [busy, setBusy] = useState<{ key: string; label: string; topic: string } | null>(null)
   // The block that was just written and is waiting for Accept / Regenerate / Edit / Discard.
   const [review, setReview] = useState<Review | null>(null)
+  // "/agent ... from a file": the file being read, files added so far, and a problem with a file.
+  const [reading, setReading] = useState<string | null>(null)
+  const [files, setFiles] = useState<readonly SourceFile[]>(() => [...knownSources()])
+  const [fileProblem, setFileProblem] = useState<{ text: string; rest: string } | null>(null)
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; caretX: number; caretY: number; caretH: number } | null>(null)
 
   // Command handlers are registered once, so they read the latest state from here.
@@ -216,7 +251,8 @@ export function GenerateLinePlugin() {
     if (!a) return
     if (i === ti) { setExpanded(e => !e); return }
     const c = list[i]
-    if (c) setLine(a.key, a.cmd, `${nameOf(c)} for `)
+    // /agent leaves the line as "workbook " so the grey suggestions ("for", "from a file") stay a choice.
+    if (c) setLine(a.key, a.cmd, a.cmd === 'agent' ? `${nameOf(c)} ` : `${nameOf(c)} for `)
   }, [setLine])
 
   // Writes one block on the empty line `anchorKey`, then leaves it up for review.
@@ -237,7 +273,7 @@ export function GenerateLinePlugin() {
       })
   }, [editor])
 
-  const run = useCallback((a: Active, item: Item, topic: string) => {
+  const run = useCallback((a: Active, item: Item, topic: string, sources?: { name: string; text: string }[]) => {
     editor.update(() => {
       const p = $getNodeByKey(a.key)
       if ($isParagraphNode(p)) p.clear() // leaves an empty line: that is where the block lands
@@ -245,7 +281,7 @@ export function GenerateLinePlugin() {
     const h = hooks.current
     if (item.kind) {
       // Agent: the side panel writes the whole document and asks for Accept before anything lands.
-      h.updateUI({ agent: { id: Date.now(), run: { kind: item.kind, prompt: topic } }, activeMath: null, activeModel3d: null })
+      h.updateUI({ agent: { id: Date.now(), run: { kind: item.kind, prompt: topic, sources } }, activeMath: null, activeModel3d: null })
       return
     }
     if (item.choice) startGenerate(a.key, item.choice, topic)
@@ -276,18 +312,50 @@ export function GenerateLinePlugin() {
     if (act === 'regen' && lineKey) startGenerate(lineKey, r.choice, r.topic)
   }, [editor, startGenerate])
 
+  // Opens the file dialog, reads the file, and puts its name on the line: "workbook from Notes.pdf ".
+  const pickFile = useCallback(async (a: Active, item: Item) => {
+    const file = await chooseSourceFile()
+    editor.focus()
+    if (!file) return
+    setReading(file.name)
+    try {
+      const src = rememberSource(await readSourceFile(file))
+      setFiles([...knownSources()])
+      setLine(a.key, a.cmd, `${nameOf(item)} from ${src.name} `)
+    } catch (err) {
+      const text = err instanceof SourceError ? err.message : `${file.name} could not be read.`
+      setFileProblem({ text, rest: live.current.active?.rest ?? a.rest })
+    } finally {
+      setReading(null)
+    }
+  }, [editor, setLine])
+
   const submit = useCallback(() => {
     const { active: a, variantIdx: vi } = live.current
-    if (!a) return
+    if (!a || reading) return
     const p = parse(a.rest, a.cmd)
     if (!p.choice) return
+    const fromFile = a.cmd === 'agent' ? fileRequest(a.rest) : null
+    const wantsFile = fromFile ?? (ghostFor(a.rest, vi, a.cmd)?.full?.endsWith(FILE_PHRASE) && !p.topic ? { choice: p.choice, from: '' } : null)
+    if (wantsFile) {
+      const found = matchSource(wantsFile.from)
+      if (found) {
+        const { source, rest } = found
+        run(a, p.choice, `${p.choice.label} from ${source.name}${rest ? `. ${rest}` : ''}`, [{ name: source.name, text: source.text }])
+      } else if (!wantsFile.from || /^a file$/i.test(wantsFile.from)) {
+        void pickFile(a, p.choice)
+      } else {
+        setFileProblem({ text: `No file called “${wantsFile.from}” was added yet. Type “from a file” to choose one.`, rest: a.rest })
+      }
+      return
+    }
     const topic = (p.topic ?? '').trim()
     if (topic) { run(a, p.choice, topic); return }
     // A bare type is not enough: use the grey suggestion if there is one, otherwise ask.
     const g = ghostFor(a.rest, vi, a.cmd)
     if (g?.full) { const t = parse(g.full, a.cmd).topic?.trim(); if (t) { run(a, p.choice, t); return } }
     setLine(a.key, a.cmd, `${nameOf(p.choice)} for `)
-  }, [run, setLine])
+  }, [run, setLine, pickFile, reading])
 
   useEffect(() => {
     const when = (fn: (e: KeyboardEvent | null) => boolean) => (e: KeyboardEvent | null) => (live.current.active ? fn(e) : false)
@@ -306,7 +374,13 @@ export function GenerateLinePlugin() {
         const a = live.current.active
         if (!a) return false
         const g = ghostFor(a.rest, live.current.variantIdx, a.cmd)
-        if (g?.full) { e?.preventDefault(); setLine(a.key, a.cmd, g.full); return true }
+        if (g?.full) {
+          e?.preventDefault()
+          setLine(a.key, a.cmd, g.full)
+          const choice = parse(g.full, a.cmd).choice
+          if (g.full.endsWith(FILE_PHRASE) && choice) void pickFile(a, choice)
+          return true
+        }
         if (liveNav.current.chipsVisible) { e?.preventDefault(); pick(live.current.idx); return true }
         return false
       }), COMMAND_PRIORITY_CRITICAL),
@@ -331,18 +405,31 @@ export function GenerateLinePlugin() {
       setIdx(i => (i + dir + n) % n)
       return true
     }
-  }, [editor, pick, submit, setLine])
+  }, [editor, pick, submit, setLine, pickFile])
 
   const reviewBar = review ? <ReviewBar editor={editor} review={review} onAct={reviewAct} /> : null
   if (!active || !pos) return <>{busy && <BusyLine editor={editor} busy={busy} />}{reviewBar}</>
   // Once a complete type and topic are on the line, say what Enter will do, so the line never looks dead.
   const topicNow = (parsed.topic ?? '').trim()
-  const readyLabel = parsed.choice && topicNow
-    ? (cmd === 'agent'
-      ? `Enter to write a ${parsed.choice.label.toLowerCase()} about “${topicNow}” in the AI panel`
-      : `Enter to add a ${parsed.choice.label.toLowerCase()} about “${topicNow}”`)
-    : null
-  const showPanel = chipsVisible || (!dismissed && readyLabel)
+  const fromFile = cmd === 'agent' ? fileRequest(active.rest) : null
+  const found = fromFile ? matchSource(fromFile.from) : null
+  const problem = fileProblem && fileProblem.rest === active.rest ? fileProblem.text : null
+  const readyLabel = reading
+    ? `Reading ${reading}…`
+    : problem
+      ? problem
+      : fromFile
+        ? (found
+          ? `Enter to write a ${fromFile.choice.label.toLowerCase()} from ${found.source.name} (${describeSource(found.source)}) in the AI panel${found.rest ? ` · ${found.rest}` : ''}${found.source.truncated ? '. Only the first part of this long file is used.' : ''}`
+          : (!fromFile.from || /^a file$/i.test(fromFile.from) ? 'Enter to choose a file (PDF, DOCX, TXT or MD, up to 10 MB)' : null))
+        : parsed.choice && topicNow
+          ? (cmd === 'agent'
+            ? `Enter to write a ${parsed.choice.label.toLowerCase()} about “${topicNow}” in the AI panel`
+            : `Enter to add a ${parsed.choice.label.toLowerCase()} about “${topicNow}”`)
+          : null
+  // Files added earlier can be picked again instead of choosing the file a second time.
+  const fileChips = !!fromFile && !found && !reading && files.length > 0
+  const showPanel = chipsVisible || fileChips || (!dismissed && readyLabel)
 
   return createPortal(
     <>
@@ -398,7 +485,25 @@ export function GenerateLinePlugin() {
               <div className="gl-keys"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> pick · <kbd>Esc</kbd> hide</div>
             </>
           )}
-          {!chipsVisible && readyLabel && <div className="gl-note" role="status">{readyLabel}</div>}
+          {fileChips && fromFile && (
+            <>
+              <div className="gl-label">Use a file</div>
+              <div className="gl-chips">
+                {files.map(f => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className="gl-chip"
+                    onClick={() => { setLine(active.key, 'agent', `${nameOf(fromFile.choice)} from ${f.name} `); editor.focus() }}
+                  >
+                    {f.name}
+                  </button>
+                ))}
+                <button type="button" className="gl-chip more" onClick={() => { void pickFile(active, fromFile.choice) }}>Choose another…</button>
+              </div>
+            </>
+          )}
+          {!chipsVisible && readyLabel && <div className="gl-note" role={problem ? 'alert' : 'status'}>{readyLabel}</div>}
         </div>
       )}
     </>,
