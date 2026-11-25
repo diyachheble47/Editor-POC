@@ -1,0 +1,18 @@
+/* Read aloud: the top-bar controls and the block being read. */
+
+.read-aloud { display: inline-flex; align-items: center; gap: 2px; }
+.read-aloud-on { background: var(--c-accent-bg); color: var(--c-accent); }
+.read-aloud-rate {
+  min-width: 38px; height: 28px; padding: 0 8px;
+  border: 1px solid var(--c-border); border-radius: 999px; background: transparent;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--c-text-2); cursor: pointer;
+}
+.read-aloud-rate:hover { background: var(--c-surface-hover); color: var(--c-text); }
+
+/* Set on the live block by useReadAloud, so it stays within the editor's own markup. */
+.editor-input .reading-now {
+  background: var(--c-accent-surface);
+  box-shadow: -8px 0 0 var(--c-accent-surface), 8px 0 0 var(--c-accent-surface);
+  border-radius: 4px;
+  transition: background .2s;
+}

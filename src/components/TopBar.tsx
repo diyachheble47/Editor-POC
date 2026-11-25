@@ -5,6 +5,7 @@ import { useEditorFormat } from '../editor/context/EditorFormatContext'
 import { useDocument, formatRelativeTime } from '../context/DocumentContext'
 import { useTheme } from '../context/ThemeContext'
 import { PreviewModal } from './PreviewModal'
+import { ReadAloudControl } from './ReadAloudControl'
 import { downloadDocumentHtml } from '../editor/exportHtml'
 import { downloadDocumentPdf } from '../editor/exportPdf'
 
@@ -60,11 +61,11 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
     }
   }, [shareOpen])
 
-  function exportAsHtml() {
+  async function exportAsHtml() {
     setShareOpen(false)
     if (!editor) return
     try {
-      downloadDocumentHtml(editor, title)
+      await downloadDocumentHtml(editor, title)
     } catch (err) {
       console.error('HTML export failed', err)
     }
@@ -159,6 +160,8 @@ export function TopBar({ leftOpen, onToggleLeft }: TopBarProps) {
         >
           <PreviewIcon />
         </button>
+
+        <ReadAloudControl editor={editor} disabled={!editor || docLoading} />
 
         <button
           type="button"

@@ -21,6 +21,7 @@
     "@lexical/selection": "^0.49.0",
     "@lexical/table": "^0.49.0",
     "@lexical/utils": "^0.49.0",
+    "@videojs/react": "10.6.0",
     "@xyflow/react": "^12.12.1",
     "jsxgraph": "^1.14.3",
     "katex": "^0.18.4",

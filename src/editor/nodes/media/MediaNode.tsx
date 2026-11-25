@@ -1,23 +1,27 @@
 // MediaNode — the block behind the slash menu's Media section: an uploaded
-// image or video, a YouTube / Vimeo link, or any embeddable page (iframe).
+// image, video or audio file, a YouTube / Vimeo link, or any embeddable page
+// (iframe).
 //
-// Plain Lexical DecoratorNode + native <img>/<video>/<iframe>; no player
-// library. Uploaded files live in this browser's IndexedDB (assetStore) and the
-// document keeps only an `idb-asset:<id>` reference. Links are stored as the
-// https URL. Everything loads lazily, only once the block scrolls into view.
+// Plain Lexical DecoratorNode. Images and embeds use native <img>/<iframe>;
+// video and audio play in the Video.js player (MediaPlayer, loaded lazily).
+// Uploaded files live in this browser's IndexedDB (assetStore) and the document
+// keeps only an `idb-asset:<id>` reference. Links are stored as the https URL.
+// Everything loads lazily, only once the block scrolls into view.
 
 import { DecoratorNode, $getNodeByKey } from 'lexical'
 import type {
   EditorConfig, LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode, Spread,
 } from 'lexical'
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { saveAsset, assetUrlFor } from '../../assetStore'
 import { ResizeFrame } from '../_shared/ResizeFrame'
 import { useAssetUrl } from '../image/ImageNode'
 import { parseEmbed, isSafeEmbedSrc } from './mediaUrl'
+import { pickAndStoreMedia } from './mediaFiles'
 
-export type MediaKind = 'image' | 'video' | 'youtube' | 'embed'
+const MediaPlayer = lazy(() => import('./MediaPlayer'))
+
+export type MediaKind = 'image' | 'video' | 'audio' | 'youtube' | 'embed'
 
 export type SerializedMediaNode = Spread<
   { kind: MediaKind; src: string; alt: string; width: number },
@@ -25,11 +29,6 @@ export type SerializedMediaNode = Spread<
 >
 
 const DEFAULT_WIDTH = 560
-const MB = 1024 * 1024
-const LIMITS: Record<'image' | 'video', { max: number; accept: string; prefix: string; hint: string }> = {
-  image: { max: 15 * MB, accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml', prefix: 'img-', hint: 'PNG, JPEG, WebP, GIF, SVG · up to 15 MB' },
-  video: { max: 200 * MB, accept: 'video/mp4,video/webm,video/ogg,video/quicktime', prefix: 'vid-', hint: 'MP4, WebM, OGG, MOV · up to 200 MB' },
-}
 
 /** Becomes true once the element is near the viewport and stays true. */
 function useNearViewport(): [React.RefObject<HTMLDivElement | null>, boolean] {
@@ -46,27 +45,6 @@ function useNearViewport(): [React.RefObject<HTMLDivElement | null>, boolean] {
 }
 
 type Picked = { kind: MediaKind; src: string; alt: string }
-
-/** Opens the browser's file picker straight away; resolves null on cancel. */
-export function pickMediaFile(kind: 'image' | 'video'): Promise<File | null> {
-  return new Promise(resolve => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = LIMITS[kind].accept
-    input.onchange = () => resolve(input.files?.[0] ?? null)
-    input.oncancel = () => resolve(null)
-    input.click()
-  })
-}
-
-/** Validates + stores a picked file in IndexedDB; null if it is not allowed. */
-export async function storeMediaFile(kind: 'image' | 'video', file: File): Promise<Picked | null> {
-  const lim = LIMITS[kind]
-  if (!file.type.startsWith(`${kind}/`) || file.size > lim.max) return null
-  const id = lim.prefix + crypto.randomUUID()
-  await saveAsset(id, file)
-  return { kind, src: assetUrlFor(id), alt: file.name.replace(/\.[^.]+$/, '') }
-}
 
 /** Small one-line "paste a link" pill for YouTube / Embed blocks. */
 function LinkBar({ mode, onChoose, onCancel }: {
@@ -104,15 +82,25 @@ function LinkBar({ mode, onChoose, onCancel }: {
 
 function Content({ kind, src, alt }: { kind: MediaKind; src: string; alt: string }) {
   const [ref, near] = useNearViewport()
-  const assetUrl = useAssetUrl(near && (kind === 'image' || kind === 'video') ? src : '')
+  const playable = kind === 'video' || kind === 'audio'
+  const assetUrl = useAssetUrl(near && (kind === 'image' || playable) ? src : '')
   if (kind === 'image') {
     return <div ref={ref}>{assetUrl ? <img src={assetUrl} alt={alt} draggable={false} /> : <div className="img-loading" />}</div>
   }
-  if (kind === 'video') {
+  if (playable) {
+    // The data attributes let the HTML / PDF export find the original file: the player's own
+    // markup is dropped from an export, and only exists once the block has scrolled into view.
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        className={`media-player media-player-${kind}`}
+        data-media-kind={kind}
+        data-media-src={src}
+        data-media-name={alt}
+        onPointerDown={e => e.stopPropagation()}
+      >
         {assetUrl
-          ? <video src={assetUrl} controls preload="metadata" playsInline />
+          ? <Suspense fallback={<div className="img-loading" />}><MediaPlayer kind={kind} src={assetUrl} /></Suspense>
           : <div className="img-loading" />}
       </div>
     )
@@ -153,8 +141,8 @@ function MediaComponent({
   }
 
   function replace() {
-    if (kind === 'image' || kind === 'video') {
-      void pickMediaFile(kind).then(f => (f ? storeMediaFile(kind, f) : null)).then(p => { if (p) choose(p) }).catch(() => {})
+    if (kind === 'image' || kind === 'video' || kind === 'audio') {
+      void pickAndStoreMedia(kind).then(p => { if (p) choose(p) }).catch(() => {})
     } else setReplacing(true)
   }
 

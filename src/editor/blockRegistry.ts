@@ -262,18 +262,6 @@ export const BLOCK_REGISTRY: BlockDef[] = [
 
   // ── MEDIA ────────────────────────────────────────────────────
   {
-    key: 'audio',
-    label: 'Audio',
-    icon: '🔊',
-    description: 'MP3, WAV, OGG audio.',
-    category: 'media',
-    status: 'coming-soon',
-    keywords: ['audio', 'sound', 'music'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
     key: 'file',
     label: 'File',
     icon: '📎',

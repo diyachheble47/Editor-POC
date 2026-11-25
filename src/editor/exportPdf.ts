@@ -5,6 +5,7 @@ import type { LexicalEditor } from 'lexical'
 import { collectStyles, prepareBody } from './exportHtml'
 import type { JsonNode } from './exportHtml'
 import { renderMermaid } from './nodes/mermaid/mermaidRender'
+import { printMediaForPdf } from './nodes/media/mediaExport'
 
 const API: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
 
@@ -272,6 +273,7 @@ export async function downloadDocumentPdf(editor: LexicalEditor, title: string):
   if (!root) throw new Error('The document is not ready yet.')
   const { body, quizzes, byType } = prepareBody(editor)
   await pictureBlocks(root, body, byType)
+  await printMediaForPdf(body)
   flattenCanvases(root, body)
   printQuizzes(body, quizzes)
   await inlineImages(body)

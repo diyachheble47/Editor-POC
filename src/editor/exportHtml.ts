@@ -6,6 +6,7 @@
 // copy exactly; the printed PDF path (PreviewModal) is the reference for those.
 
 import type { LexicalEditor } from 'lexical'
+import { embedMediaForHtml } from './nodes/media/mediaExport'
 
 /** Every CSS rule the page has loaded, as text. Cross-origin sheets are skipped. */
 export function collectStyles(): string {
@@ -86,8 +87,9 @@ export function prepareBody(editor: LexicalEditor): { body: HTMLElement; quizzes
 }
 
 /** Builds the HTML text of the document as it currently stands. */
-export function documentToHtml(editor: LexicalEditor, title: string): string {
+export async function documentToHtml(editor: LexicalEditor, title: string): Promise<string> {
   const { body, quizzes } = prepareBody(editor)
+  await embedMediaForHtml(body)
   // Every quiz starts fresh in the file, with its answers attached.
   body.querySelectorAll<HTMLElement>('.quiz-block').forEach((block, i) => {
     const answers = (quizzes[i] ?? []).map(q => ({ answer: q.answer, why: q.why }))
@@ -125,8 +127,8 @@ body { margin: 0; background: var(--c-ground); color: var(--c-text); font-family
 }
 
 /** Downloads the document as "<title>.html". */
-export function downloadDocumentHtml(editor: LexicalEditor, title: string): void {
-  const html = documentToHtml(editor, title)
+export async function downloadDocumentHtml(editor: LexicalEditor, title: string): Promise<void> {
+  const html = await documentToHtml(editor, title)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const safe = (title || 'Untitled').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Untitled'

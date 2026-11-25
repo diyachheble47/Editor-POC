@@ -1,0 +1,18 @@
+/* Video / audio player (Video.js packaged skins, see MediaPlayer.tsx).
+   Only the skin's documented custom properties are set here, so it takes the
+   Student theme (plum accent, Work Sans) and nothing else of it is overridden. */
+
+.media-player {
+  --media-accent-color: var(--c-accent);
+  --media-accent-text-color: #fff;
+  --media-font-family: var(--font-ui);
+  --media-border-radius: var(--r-lg);
+  --media-border-color: var(--c-border);
+}
+
+.media-player-video .media-skin-video { width: 100%; aspect-ratio: 16 / 9; }
+.media-player-audio .media-skin-audio { width: 100%; }
+
+/* An exported file uses the browser's own controls. */
+.media-player > video,
+.media-player > audio { display: block; width: 100%; }
