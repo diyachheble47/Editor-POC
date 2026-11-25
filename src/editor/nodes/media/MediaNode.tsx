@@ -15,6 +15,7 @@ import type {
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { ResizeFrame } from '../_shared/ResizeFrame'
+import type { Align } from '../_shared/ResizeFrame'
 import { useAssetUrl } from '../image/ImageNode'
 import { parseEmbed, isSafeEmbedSrc } from './mediaUrl'
 import { pickAndStoreMedia } from './mediaFiles'
@@ -24,7 +25,7 @@ const MediaPlayer = lazy(() => import('./MediaPlayer'))
 export type MediaKind = 'image' | 'video' | 'audio' | 'youtube' | 'embed'
 
 export type SerializedMediaNode = Spread<
-  { kind: MediaKind; src: string; alt: string; width: number },
+  { kind: MediaKind; src: string; alt: string; width: number; align?: Align },
   SerializedLexicalNode
 >
 
@@ -85,7 +86,7 @@ function Content({ kind, src, alt }: { kind: MediaKind; src: string; alt: string
   const playable = kind === 'video' || kind === 'audio'
   const assetUrl = useAssetUrl(near && (kind === 'image' || playable) ? src : '')
   if (kind === 'image') {
-    return <div ref={ref}>{assetUrl ? <img src={assetUrl} alt={alt} draggable={false} /> : <div className="img-loading" />}</div>
+    return <div ref={ref} className="media-img">{assetUrl ? <img src={assetUrl} alt={alt} draggable={false} /> : <div className="img-loading" />}</div>
   }
   if (playable) {
     // The data attributes let the HTML / PDF export find the original file: the player's own
@@ -123,8 +124,8 @@ function Content({ kind, src, alt }: { kind: MediaKind; src: string; alt: string
 }
 
 function MediaComponent({
-  nodeKey, kind, src, alt, width,
-}: { nodeKey: NodeKey; kind: MediaKind; src: string; alt: string; width: number }) {
+  nodeKey, kind, src, alt, width, align,
+}: { nodeKey: NodeKey; kind: MediaKind; src: string; alt: string; width: number; align: Align }) {
   const [editor] = useLexicalComposerContext()
   const [replacing, setReplacing] = useState(false)
 
@@ -157,7 +158,13 @@ function MediaComponent({
 
   return (
     <div className="img-block" contentEditable={false}>
-      <ResizeFrame width={width} min={160} onCommit={w => update(n => n.setWidth(w))}>
+      <ResizeFrame
+        width={width}
+        align={align}
+        min={160}
+        onCommit={(w, _h, a) => update(n => { n.setWidth(w); n.setAlign(a) })}
+        onAlign={a => update(n => n.setAlign(a))}
+      >
         <Content kind={kind} src={src} alt={alt} />
         <button type="button" className="img-replace" onClick={replace}>Replace</button>
       </ResizeFrame>
@@ -170,11 +177,14 @@ export class MediaNode extends DecoratorNode<React.ReactElement> {
   __src: string
   __alt: string
   __width: number
+  __align: Align = 'center'
 
   static getType(): string { return 'media' }
 
   static clone(node: MediaNode): MediaNode {
-    return new MediaNode(node.__kind, node.__src, node.__alt, node.__width, node.__key)
+    const copy = new MediaNode(node.__kind, node.__src, node.__alt, node.__width, node.__key)
+    copy.__align = node.__align
+    return copy
   }
 
   constructor(kind: MediaKind = 'image', src = '', alt = '', width = DEFAULT_WIDTH, key?: NodeKey) {
@@ -186,14 +196,16 @@ export class MediaNode extends DecoratorNode<React.ReactElement> {
   }
 
   exportJSON(): SerializedMediaNode {
-    return { type: 'media', version: 1, kind: this.__kind, src: this.__src, alt: this.__alt, width: this.__width }
+    return { type: 'media', version: 1, kind: this.__kind, src: this.__src, alt: this.__alt, width: this.__width, align: this.__align }
   }
 
   static importJSON(s: SerializedMediaNode): MediaNode {
     // A saved link is re-checked: anything that is not https is dropped.
     const link = s.kind === 'youtube' || s.kind === 'embed'
     const src = link && !isSafeEmbedSrc(s.src) ? '' : s.src
-    return new MediaNode(s.kind, src, s.alt, s.width)
+    const node = new MediaNode(s.kind, src, s.alt, s.width)
+    node.__align = s.align === 'left' || s.align === 'right' ? s.align : 'center'
+    return node
   }
 
   setMedia(kind: MediaKind, src: string, alt: string): void {
@@ -204,13 +216,14 @@ export class MediaNode extends DecoratorNode<React.ReactElement> {
   }
 
   setWidth(width: number): void { this.getWritable().__width = width }
+  setAlign(align: Align): void { this.getWritable().__align = align }
 
   isInline(): boolean { return false }
   createDOM(_config: EditorConfig): HTMLElement { return document.createElement('div') }
   updateDOM(): boolean { return false }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): React.ReactElement {
-    return <MediaComponent nodeKey={this.getKey()} kind={this.__kind} src={this.__src} alt={this.__alt} width={this.__width} />
+    return <MediaComponent nodeKey={this.getKey()} kind={this.__kind} src={this.__src} alt={this.__alt} width={this.__width} align={this.__align} />
   }
 }
 

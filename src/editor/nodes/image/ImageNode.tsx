@@ -19,6 +19,7 @@ import type {
 } from 'lexical'
 import { useEffect, useRef, useState } from 'react'
 import { ResizeFrame } from '../_shared/ResizeFrame'
+import type { Align } from '../_shared/ResizeFrame'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
   saveAsset, getAsset, listAssetIds, assetUrlFor, assetIdFromUrl, isAssetUrl,
@@ -32,7 +33,7 @@ const MAX_BYTES = 15 * 1024 * 1024
 const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml'
 
 export type SerializedImageNode = Spread<
-  { src: string; alt: string; width: number },
+  { src: string; alt: string; width: number; align?: Align },
   SerializedLexicalNode
 >
 
@@ -147,8 +148,8 @@ function UploadPanel({ onChoose }: { onChoose: (file: File | string) => void }) 
 }
 
 function ImageComponent({
-  nodeKey, src, alt, width,
-}: { nodeKey: NodeKey; src: string; alt: string; width: number }) {
+  nodeKey, src, alt, width, align,
+}: { nodeKey: NodeKey; src: string; alt: string; width: number; align: Align }) {
   const [editor] = useLexicalComposerContext()
   const url = useAssetUrl(src)
 
@@ -173,7 +174,14 @@ function ImageComponent({
 
   return (
     <div className="img-block" contentEditable={false}>
-      <ResizeFrame width={width} min={MIN_WIDTH} max={MAX_WIDTH} onCommit={(w) => update((n) => n.setWidth(w))}>
+      <ResizeFrame
+        width={width}
+        align={align}
+        min={MIN_WIDTH}
+        max={MAX_WIDTH}
+        onCommit={(w, _h, a) => update((n) => { n.setWidth(w); n.setAlign(a) })}
+        onAlign={(a) => update((n) => n.setAlign(a))}
+      >
         {url ? <img src={url} alt={alt} draggable={false} /> : <div className="img-loading" />}
         <button type="button" className="img-replace" onClick={() => {
           void pickImageFile().then(f => f && choose(f))
@@ -189,11 +197,14 @@ export class ImageNode extends DecoratorNode<React.ReactElement> {
   __src: string
   __alt: string
   __width: number
+  __align: Align = 'center'
 
   static getType(): string { return 'image' }
 
   static clone(node: ImageNode): ImageNode {
-    return new ImageNode(node.__src, node.__alt, node.__width, node.__key)
+    const copy = new ImageNode(node.__src, node.__alt, node.__width, node.__key)
+    copy.__align = node.__align
+    return copy
   }
 
   constructor(src = '', alt = '', width = DEFAULT_WIDTH, key?: NodeKey) {
@@ -204,11 +215,13 @@ export class ImageNode extends DecoratorNode<React.ReactElement> {
   }
 
   exportJSON(): SerializedImageNode {
-    return { type: 'image', version: 1, src: this.__src, alt: this.__alt, width: this.__width }
+    return { type: 'image', version: 1, src: this.__src, alt: this.__alt, width: this.__width, align: this.__align }
   }
 
   static importJSON(s: SerializedImageNode): ImageNode {
-    return new ImageNode(s.src, s.alt, s.width)
+    const node = new ImageNode(s.src, s.alt, s.width)
+    node.__align = s.align === 'left' || s.align === 'right' ? s.align : 'center'
+    return node
   }
 
   setSrc(src: string, alt: string): void {
@@ -221,6 +234,10 @@ export class ImageNode extends DecoratorNode<React.ReactElement> {
     this.getWritable().__width = width
   }
 
+  setAlign(align: Align): void {
+    this.getWritable().__align = align
+  }
+
   isInline(): boolean { return false }
 
   createDOM(_config: EditorConfig): HTMLElement { return document.createElement('div') }
@@ -228,7 +245,7 @@ export class ImageNode extends DecoratorNode<React.ReactElement> {
   updateDOM(): boolean { return false }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): React.ReactElement {
-    return <ImageComponent nodeKey={this.getKey()} src={this.__src} alt={this.__alt} width={this.__width} />
+    return <ImageComponent nodeKey={this.getKey()} src={this.__src} alt={this.__alt} width={this.__width} align={this.__align} />
   }
 }
 

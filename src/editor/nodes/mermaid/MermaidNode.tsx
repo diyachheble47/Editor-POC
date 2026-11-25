@@ -11,8 +11,9 @@ import { ResizeFrame } from '../_shared/ResizeFrame'
 import { useTheme } from '../../../context/ThemeContext'
 import { renderMermaid } from './mermaidRender'
 import { MERMAID_TEMPLATES } from './templates'
+import type { Align } from '../_shared/ResizeFrame'
 
-export type SerializedMermaidNode = Spread<{ code: string; width: number; height?: number | null }, SerializedLexicalNode>
+export type SerializedMermaidNode = Spread<{ code: string; width: number; height?: number | null; align?: Align }, SerializedLexicalNode>
 
 const MAX_CODE = 20000
 const DEFAULT_CODE = MERMAID_TEMPLATES[0].code
@@ -60,19 +61,24 @@ function useNearViewport() {
 }
 
 /**
- * Shrinks (never crops) the rendered diagram to fit inside a fixed-height box
- * while editing, so the whole diagram stays visible and the box never resizes
- * as you type. `max-height`/`overflow` alone can't do this: a percentage
- * height on an <svg> needs a definite-height ancestor chain, which a flex
- * item doesn't reliably give it, and mermaid's own inline width/height
- * attributes would win over a CSS rule anyway. Reading the diagram's real
- * (viewBox) size and setting pixel width/height directly sidesteps both.
+ * Scales the rendered diagram to its box, so it is never cropped and never left small in a big
+ * box: it shrinks to stay visible while editing (the box does not resize as you type), and it
+ * grows or shrinks with the box when the user drags a handle. `max-height`/`overflow` alone
+ * can't do this: a percentage height on an <svg> needs a definite-height ancestor chain, which
+ * a flex item doesn't reliably give it, and mermaid's own inline width/height attributes would
+ * win over a CSS rule anyway. Reading the diagram's real (viewBox) size and setting pixel
+ * width/height directly sidesteps both.
  */
-function useFitDiagram(boxRef: React.RefObject<HTMLDivElement | null>, svg: string, active: boolean) {
+function useFitDiagram(
+  boxRef: React.RefObject<HTMLDivElement | null>,
+  svg: string,
+  fixedHeight: boolean,
+  userSized: boolean,
+) {
   useLayoutEffect(() => {
     const box = boxRef.current
     const svgEl = box?.querySelector('svg')
-    if (!active || !box || !svgEl) return
+    if (!box || !svgEl) return
 
     const fit = () => {
       svgEl.style.width = ''
@@ -83,8 +89,13 @@ function useFitDiagram(boxRef: React.RefObject<HTMLDivElement | null>, svg: stri
       const vbH = vb?.height || natural.height
       if (!vbW || !vbH) return
       const pad = 28 // .mm-view's 14px padding, both sides
-      // No upper cap of 1: a box the user made bigger should enlarge the diagram too.
-      const scale = Math.min((box.clientWidth - pad) / vbW, (box.clientHeight - pad) / vbH)
+      // Resizing the box has to resize the drawing, wider or narrower. Until the box has been
+      // sized by hand the drawing keeps its natural size (never blown up to fill the default box).
+      const resizing = !!box.closest('.rz-frame.rz-dragging')
+      const cap = fixedHeight || userSized || resizing ? Infinity : 1
+      const byWidth = (box.clientWidth - pad) / vbW
+      const byHeight = fixedHeight ? (box.clientHeight - pad) / vbH : Infinity
+      const scale = Math.min(byWidth, byHeight, cap)
       if (!Number.isFinite(scale) || scale <= 0) return
       svgEl.style.width = `${vbW * scale}px`
       svgEl.style.height = `${vbH * scale}px`
@@ -93,16 +104,16 @@ function useFitDiagram(boxRef: React.RefObject<HTMLDivElement | null>, svg: stri
     const ro = new ResizeObserver(fit)
     ro.observe(box)
     return () => ro.disconnect()
-  }, [boxRef, svg, active])
+  }, [boxRef, svg, fixedHeight, userSized])
 }
 
-type MermaidData = { code: string; width: number; height: number | null }
+type MermaidData = { code: string; width: number; height: number | null; align: Align }
 
-function MermaidComponent({ nodeKey, code, width, height }: { nodeKey: NodeKey; code: string; width: number; height: number | null }) {
+function MermaidComponent({ nodeKey, code, width, height, align }: { nodeKey: NodeKey; code: string; width: number; height: number | null; align: Align }) {
   const { data, change, rootRef, editing, setEditing } = useBlockData<MermaidData>(
     nodeKey,
-    { code, width, height },
-    (node, d) => { if (node instanceof MermaidNode) { node.setCode(d.code); node.setWidth(d.width); node.setHeight(d.height) } },
+    { code, width, height, align },
+    (node, d) => { if (node instanceof MermaidNode) { node.setCode(d.code); node.setWidth(d.width); node.setHeight(d.height); node.setAlign(d.align) } },
   )
   const { ref: viewRef, near } = useNearViewport()
 
@@ -144,9 +155,8 @@ function MermaidComponent({ nodeKey, code, width, height }: { nodeKey: NodeKey; 
 
   const { svg, error, busy } = useDiagram(liveCode, near || editing)
   const boxRef = useRef<HTMLDivElement>(null)
-  // Fit whenever the box has a size the user chose (or is being edited), so the
-  // diagram always scales to the box instead of overflowing or being cropped.
-  useFitDiagram(boxRef, svg, editing || data.height != null)
+  // The diagram always scales to its box (see useFitDiagram), so dragging a handle resizes the drawing too.
+  useFitDiagram(boxRef, svg, editing || data.height != null, data.width !== DEFAULT_WIDTH)
 
   function pickTemplate(templateCode: string) {
     if (codeRef.current) codeRef.current.value = templateCode
@@ -181,7 +191,9 @@ function MermaidComponent({ nodeKey, code, width, height }: { nodeKey: NodeKey; 
         minHeight={160}
         maxHeight={1600}
         resizeHeight
-        onCommit={(w, h) => change({ ...data, width: w, height: h ?? data.height })}
+        align={data.align}
+        onCommit={(w, h, a) => change({ ...data, width: w, height: h ?? data.height, align: a })}
+        onAlign={a => change({ ...data, align: a })}
       >
         <div
           className={`mm-view${editing ? ' mm-view-fixed' : ''}${data.height != null ? ' mm-view-fill' : ''}`}
@@ -233,10 +245,13 @@ export class MermaidNode extends DecoratorNode<React.ReactElement> {
   __code: string
   __width: number
   __height: number | null // null = natural height (reading) / default box (editing)
+  __align: Align = 'center'
 
   static getType(): string { return 'mermaid' }
   static clone(node: MermaidNode): MermaidNode {
-    return new MermaidNode(node.__code, node.__width, node.__height, node.__key)
+    const copy = new MermaidNode(node.__code, node.__width, node.__height, node.__key)
+    copy.__align = node.__align
+    return copy
   }
 
   constructor(code = DEFAULT_CODE, width = DEFAULT_WIDTH, height: number | null = null, key?: NodeKey) {
@@ -247,22 +262,25 @@ export class MermaidNode extends DecoratorNode<React.ReactElement> {
   }
 
   exportJSON(): SerializedMermaidNode {
-    return { type: 'mermaid', version: 1, code: this.__code, width: this.__width, height: this.__height }
+    return { type: 'mermaid', version: 1, code: this.__code, width: this.__width, height: this.__height, align: this.__align }
   }
   static importJSON(s: SerializedMermaidNode): MermaidNode {
-    return new MermaidNode(String(s.code ?? '').slice(0, MAX_CODE), s.width ?? DEFAULT_WIDTH, s.height ?? null)
+    const node = new MermaidNode(String(s.code ?? '').slice(0, MAX_CODE), s.width ?? DEFAULT_WIDTH, s.height ?? null)
+    node.__align = s.align === 'left' || s.align === 'right' ? s.align : 'center'
+    return node
   }
 
   setCode(code: string): void { this.getWritable().__code = code }
   setWidth(width: number): void { this.getWritable().__width = width }
   setHeight(height: number | null): void { this.getWritable().__height = height }
+  setAlign(align: Align): void { this.getWritable().__align = align }
 
   isInline(): boolean { return false }
   createDOM(_config: EditorConfig): HTMLElement { return document.createElement('div') }
   updateDOM(): boolean { return false }
 
   decorate(_editor: LexicalEditor, _config: EditorConfig): React.ReactElement {
-    return <MermaidComponent nodeKey={this.getKey()} code={this.__code} width={this.__width} height={this.__height} />
+    return <MermaidComponent nodeKey={this.getKey()} code={this.__code} width={this.__width} height={this.__height} align={this.__align} />
   }
 }
 

@@ -58,6 +58,8 @@ img { height: auto; }
 .callout-block { border-radius: 2mm; margin: 4mm 0; }
 .rb-block { margin: 4mm 0; }
 .img-block { text-align: center; margin: 4mm 0; }
+.rz-pos-left { margin-left: 0 !important; margin-right: auto !important; }
+.rz-pos-right { margin-left: auto !important; margin-right: 0 !important; }
 .img-block img { max-width: 100%; border-radius: 1.5mm; }
 
 /* ---- Quiz: a clean printed worksheet with an answer key ---- */

@@ -39,7 +39,12 @@
 .img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .rz-frame { position: relative; max-width: 100%; margin: 0 auto; }
+/* Where the block sits in the page: it leans toward the side that stayed put while it was resized. */
+.rz-pos-left { margin-left: 0; margin-right: auto; }
+.rz-pos-right { margin-left: auto; margin-right: 0; }
 .rz-frame > img, .rz-frame > video { width: 100%; height: auto; display: block; border-radius: var(--r-sm, 5px); }
+/* The picture of a media block sits inside a wrapper div: it must follow the frame's width too. */
+.rz-frame .media-img > img { width: 100%; height: auto; display: block; border-radius: var(--r-sm, 5px); }
 .img-loading { aspect-ratio: 4 / 3; background: var(--c-surface-hover); border-radius: var(--r-sm, 5px); }
 .img-replace {
   position: absolute; top: 8px; right: 8px; opacity: 0;
@@ -50,20 +55,65 @@
 }
 .rz-frame:hover .img-replace, .rz-active .img-replace { opacity: 1; }
 
-/* Corner resize handles: hidden until the block is hovered / clicked */
+/* Resize handles. Each one is a roomy invisible hit area (28px, 40px on touch) with the visible
+   dot or bar drawn by ::after, so it is easy to hit. Shown while the block is hovered or selected. */
 .rz-frame.rz-active, .rz-frame:hover { outline: 1.5px solid var(--c-accent); outline-offset: 0; border-radius: 2px; }
 .rz-handle {
-  position: absolute; width: 11px; height: 11px; z-index: 3;
-  background: var(--c-ground); border: 2px solid var(--c-accent); border-radius: 3px;
-  opacity: 0; transition: opacity 0.12s; touch-action: none;
+  position: absolute; z-index: 3; width: 28px; height: 28px; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.12s;
 }
+.rz-handle::after {
+  content: ''; background: var(--c-ground); border: 2px solid var(--c-accent);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25); transition: transform 0.12s, background 0.12s;
+}
+.rz-nw::after, .rz-ne::after, .rz-sw::after, .rz-se::after { width: 12px; height: 12px; border-radius: 50%; }
+.rz-e::after, .rz-w::after { width: 7px; height: 28px; border-radius: 999px; }
+.rz-s::after { width: 28px; height: 7px; border-radius: 999px; }
 .rz-frame:hover .rz-handle, .rz-active .rz-handle, .rz-dragging .rz-handle { opacity: 1; }
-.rz-nw { left: -6px; top: -6px; cursor: nwse-resize; }
-.rz-se { right: -6px; bottom: -6px; cursor: nwse-resize; }
-.rz-ne { right: -6px; top: -6px; cursor: nesw-resize; }
-.rz-sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.rz-handle:hover::after, .rz-dragging .rz-handle::after { background: var(--c-accent); transform: scale(1.15); }
+.rz-nw { left: -14px; top: -14px; cursor: nwse-resize; }
+.rz-se { right: -14px; bottom: -14px; cursor: nwse-resize; }
+.rz-ne { right: -14px; top: -14px; cursor: nesw-resize; }
+.rz-sw { left: -14px; bottom: -14px; cursor: nesw-resize; }
+.rz-e { right: -14px; top: calc(50% - 20px); height: 40px; cursor: ew-resize; }
+.rz-w { left: -14px; top: calc(50% - 20px); height: 40px; cursor: ew-resize; }
+.rz-s { bottom: -14px; left: calc(50% - 20px); width: 40px; cursor: ns-resize; }
+@media (pointer: coarse) {
+  .rz-handle { width: 40px; height: 40px; opacity: 1; }
+  .rz-nw { left: -20px; top: -20px; } .rz-se { right: -20px; bottom: -20px; }
+  .rz-ne { right: -20px; top: -20px; } .rz-sw { left: -20px; bottom: -20px; }
+  .rz-e { right: -20px; height: 56px; top: calc(50% - 28px); } .rz-w { left: -20px; height: 56px; top: calc(50% - 28px); }
+  .rz-s { bottom: -20px; width: 56px; left: calc(50% - 28px); }
+}
 .rz-dragging { user-select: none; }
-.rz-dragging iframe, .rz-dragging video { pointer-events: none; }
+/* Whatever is inside (a player, a frame, a diagram) must not grab the pointer while resizing. */
+.rz-dragging > *:not(.rz-handle):not(.rz-size) { pointer-events: none; }
+
+/* Align control: three small buttons at the top left of the block, like "Replace" at the top right. */
+.rz-align {
+  position: absolute; top: 8px; left: 8px; z-index: 3; display: flex; gap: 2px; padding: 2px;
+  border: 1px solid var(--c-border); border-radius: var(--r-sm, 6px); background: var(--c-ground);
+  opacity: 0; transition: opacity 0.12s;
+}
+.rz-frame:hover .rz-align, .rz-active .rz-align { opacity: 1; }
+.rz-dragging .rz-align { opacity: 0; }
+.rz-align-btn {
+  width: 24px; height: 22px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border: 0; border-radius: 4px; background: transparent; color: var(--c-text-3);
+}
+.rz-align-btn:hover { background: var(--c-surface-hover); color: var(--c-text); }
+.rz-align-btn.on { background: var(--c-accent-bg); color: var(--c-accent); }
+
+/* The size label shown while dragging; plum when the size snapped to a share of the page. */
+.rz-size {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4;
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap;
+  background: color-mix(in srgb, var(--c-text) 86%, transparent); color: var(--c-surface);
+  opacity: 0; transition: opacity 0.12s; pointer-events: none;
+}
+.rz-dragging .rz-size { opacity: 1; }
+.rz-size.rz-snapped { background: var(--c-accent); color: #fff; }
 
 /* Media block */
 .media-bar {
