@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from .. import ai_service, gemini
 from ..ai_service import BLOCK_TYPES
-from ..relevance import ASKED_3D
 
 log = logging.getLogger("notebook.ai")
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -15,12 +14,9 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 # The AI routes. The work itself lives in ai_service.py.
 #
 #   POST /ai/documents   a whole workbook, lesson or lesson plan (streamed)
-#   POST /ai/blocks      one block of a chosen type: quiz, table, graph, html ...
+#   POST /ai/generate    one block of a chosen type: quiz, table, graph, html ... (plain JSON)
 #   POST /ai/chat        change the open document as the teacher asks, with the chat so far (streamed)
 #   GET  /ai/status      whether the AI is set up
-#
-# The first three are the API to build on. POST /ai/generate and POST /ai/html are the older routes the
-# editor still calls: they behave exactly as before and are kept until the editor moves to the new ones.
 
 MAX_SOURCES = 3
 MAX_SOURCE_CHARS = 120_000
@@ -34,13 +30,13 @@ class SourceText(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_SOURCE_CHARS)
 
 
-class GenerateRequest(BaseModel):
+class DocumentRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
     # Text of the document the agent was opened on; when present the result is
     # built from it instead of from the title alone.
     context: str = Field(default="", max_length=30000)
-    kind: Literal["workbook", "lesson_plan", "lesson", "edit"]
+    kind: Literal["workbook", "lesson_plan", "lesson"]
     # Documents to write from ("/agent workbook from a file").
     sources: list[SourceText] = Field(default_factory=list, max_length=MAX_SOURCES)
 
@@ -51,23 +47,13 @@ class GenerateRequest(BaseModel):
         return self
 
 
-class HtmlRequest(BaseModel):
-    prompt: str = Field(min_length=1, max_length=2000)
-    # The widget's current code, when the teacher is asking for a change to it.
-    current: str = Field(default="", max_length=20000)
-
-
-class DocumentRequest(GenerateRequest):
-    """A whole document: what POST /ai/generate does for the three document kinds."""
-
-    kind: Literal["workbook", "lesson_plan", "lesson"]
-
-
 class BlockRequest(BaseModel):
     type: Literal[BLOCK_TYPES]  # type: ignore[valid-type]
-    prompt: str = Field(min_length=1, max_length=500)
+    prompt: str = Field(min_length=1, max_length=2000)
     # Tells the model what to make when two choices share a type (a table, or a table with formulas).
     hint: str = Field(default="", max_length=300)
+    # A widget's current code, when the teacher is asking for a change to it (type "html" only).
+    current: str = Field(default="", max_length=20000)
 
 
 class ChatTurn(BaseModel):
@@ -118,12 +104,12 @@ async def generate_document(body: DocumentRequest):
     return _events(ai_service.document_stream(body.kind, body.title, body.description, body.context, sources))
 
 
-@router.post("/blocks")
+@router.post("/generate")
 async def generate_block(body: BlockRequest):
     """One block of the chosen type, as JSON: `{"block": {...}}` (not streamed: it is a single block)."""
     _require_ai()
     try:
-        block = await ai_service.generate_block(body.type, body.prompt, body.hint)
+        block = await ai_service.generate_block(body.type, body.prompt, body.hint, body.current)
     except Exception:  # noqa: BLE001 - surfaced to the user as a message
         log.exception("AI block generation failed")
         raise HTTPException(502, "The AI service returned an error. Try again in a moment.") from None
@@ -141,37 +127,3 @@ async def chat(body: ChatRequest):
         raise HTTPException(422, "Editing needs an instruction.")
     history = tuple((t.role, t.text) for t in body.history[-MAX_CHAT_TURNS:])
     return _events(ai_service.document_stream("edit", body.title, body.instruction, body.context, (), history))
-
-
-# ── The routes the editor still calls today ────────────────────────────────────────────────
-
-@router.post("/html")
-async def generate_html(body: HtmlRequest):
-    """Older route: one interactive widget as a single HTML page (not streamed: it only works whole).
-    POST /ai/blocks with type "html" does this for a new widget."""
-    _require_ai()
-    try:
-        code = await ai_service.make_widget(body.prompt, body.current, three_d=bool(ASKED_3D.search(body.prompt)))
-    except Exception:  # noqa: BLE001 - surfaced to the user as a message
-        log.exception("AI html generation failed")
-        raise HTTPException(502, "The AI service returned an error. Try again in a moment.") from None
-    if code is None:
-        raise HTTPException(422, "The AI could not make a working widget from that. Try describing it differently.")
-    return {"code": code}
-
-
-@router.post("/generate")
-async def generate(body: GenerateRequest):
-    """Older route, one handler for every kind: a document, or `edit` for a change to one. Streams Server-Sent
-    Events like POST /ai/documents. POST /ai/documents and POST /ai/chat are the same work with a clearer request."""
-    _require_ai()
-
-    # Empty `context` is fine for "edit" — it just means an empty document
-    # (nothing to keep), which the slash menu's "Generate" relies on to add
-    # a single new block to a brand-new document. Only the instruction
-    # itself is actually required.
-    if body.kind == "edit" and not body.description.strip():
-        raise HTTPException(422, "Editing needs an instruction.")
-
-    sources = tuple((s.name, s.text) for s in body.sources)
-    return _events(ai_service.document_stream(body.kind, body.title, body.description, body.context, sources))

@@ -12,8 +12,8 @@
 import { $createParagraphNode, $getNodeByKey, $getRoot, $isParagraphNode } from 'lexical'
 import type { LexicalEditor, NodeKey } from 'lexical'
 import { $createNodeFromAiBlock } from '../aiStreamBuilder'
-import { ApiError, getAiChat, MAX_AI_CHAT_MESSAGES, saveAiChat, streamAiDocument } from '../../storage/api'
-import type { AiChatMessage, AiRequest } from '../../storage/api'
+import { ApiError, appendAiChat, generateAiBlock } from '../../storage/api'
+import type { AiBlock, AiChatMessage } from '../../storage/api'
 import type { GenerateChoice } from './generateChoices'
 
 export interface GenerateBlockHooks {
@@ -33,13 +33,8 @@ function recordInChat(docId: string, messages: AiChatMessage[]) {
   const detail: AiChatEvent = { docId, messages, handled: false }
   window.dispatchEvent(new CustomEvent<AiChatEvent>(AI_CHAT_EVENT, { detail }))
   if (detail.handled) return
-  void (async () => {
-    try {
-      // If the saved chat can't be read, skip the write: saving over it would erase the history.
-      const prev = await getAiChat(docId)
-      await saveAiChat(docId, [...prev, ...messages].slice(-MAX_AI_CHAT_MESSAGES))
-    } catch { /* chat history is best-effort */ }
-  })()
+  // Appended on the server, so nothing already saved can be overwritten.
+  void appendAiChat(docId, messages).catch(() => { /* chat history is best-effort */ })
 }
 
 /**
@@ -61,54 +56,46 @@ export async function generateBlockAtAnchor(
   hooks.aiAbortRef.current = () => ai.abort()
   hooks.setAiState({ status: 'generating', message: null, startedAt: Date.now() })
 
-  const request: AiRequest = {
-    title: topic.slice(0, 120),
-    description: `Add ONE new ${label} block about: ${topic}.${choice.hint ? ` It must be ${choice.hint}.` : ''} Nothing else: no heading, no title, no intro text, and no other block.`,
-    kind: 'lesson',
-  }
-
-  let got = false
+  let block: AiBlock | null = null
   let insertedKey: NodeKey | null = null
   let failure: string | null = null
   try {
-    await streamAiDocument(request, event => {
-      if (got) return
-      if (event.t === 'error') { failure = event.message; return }
-      // Only the chosen kind counts; anything else the model sends first is skipped.
-      if (event.t !== 'block' || event.block.type !== choice.type) return
-      got = true
-      editor.update(() => {
-        try {
-          const node = $createNodeFromAiBlock(event.block)
-          insertedKey = node.getKey()
-          const anchor = $getNodeByKey(anchorKey)
-          if (anchor) {
-            anchor.insertAfter(node)
-            let after = node.getNextSibling()
-            if (!$isParagraphNode(after)) {
-              after = $createParagraphNode()
-              node.insertAfter(after)
-            }
-            after.selectStart()
-            if ($isParagraphNode(anchor) && anchor.getTextContent() === '') anchor.remove()
-          } else {
-            // The anchor paragraph is gone (edited away while this was in
-            // flight) — still land the block rather than lose it.
-            $getRoot().append(node)
-          }
-        } catch { /* unparseable — nothing to insert */ }
-      })
-      // No whole-document "keep every other block" protocol is in play here
-      // (unlike 'edit'), so nothing is lost by stopping the model right away
-      // once its one requested block has arrived.
-      ai.abort()
-    }, ai.signal)
+    block = await generateAiBlock({ type: choice.type, prompt: topic, hint: choice.hint }, ai.signal)
   } catch (err) {
     if (!ai.signal.aborted) {
-      failure = err instanceof ApiError && err.status === 503
-        ? 'The AI is not set up yet: add GEMINI_API_KEY to backend/.env and restart the backend.'
-        : 'Could not reach the AI service.'
+      if (err instanceof ApiError && err.status === 503) {
+        failure = 'The AI is not set up yet: add GEMINI_API_KEY to backend/.env and restart the backend.'
+      } else if (err instanceof ApiError && typeof err.detail === 'string') {
+        failure = err.detail // "could not make that block", or the model failed
+      } else {
+        failure = 'Could not reach the AI service.'
+      }
     }
+  }
+  const got = block !== null && !ai.signal.aborted
+  if (block && got) {
+    const made = block
+    editor.update(() => {
+      try {
+        const node = $createNodeFromAiBlock(made)
+        insertedKey = node.getKey()
+        const anchor = $getNodeByKey(anchorKey)
+        if (anchor) {
+          anchor.insertAfter(node)
+          let after = node.getNextSibling()
+          if (!$isParagraphNode(after)) {
+            after = $createParagraphNode()
+            node.insertAfter(after)
+          }
+          after.selectStart()
+          if ($isParagraphNode(anchor) && anchor.getTextContent() === '') anchor.remove()
+        } else {
+          // The anchor paragraph is gone (edited away while this was in
+          // flight) — still land the block rather than lose it.
+          $getRoot().append(node)
+        }
+      } catch { /* unparseable — nothing to insert */ }
+    })
   }
   hooks.aiAbortRef.current = null
   hooks.setAiState(

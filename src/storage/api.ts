@@ -164,6 +164,8 @@ export interface AiRequest {
   kind: AiKind
   /** Documents the teacher attached ("/agent workbook from a file"): name and text, never the file. */
   sources?: { name: string; text: string }[]
+  /** The chat so far, oldest first, so a follow-up edit ("make it shorter") can be understood. Edits only. */
+  history?: { role: 'user' | 'assistant'; text: string }[]
 }
 
 /** A block the AI produced (already checked and cleaned by the server). */
@@ -220,16 +222,22 @@ export async function getAiStatus(): Promise<boolean> {
   }
 }
 
-/** Calls the backend generator and streams its events. Throws ApiError on 503 etc. */
+/**
+ * Calls the backend and streams its events. A new document goes to POST /ai/documents, a change to the open
+ * one (`kind: 'edit'`) to POST /ai/chat. Throws ApiError on 503 etc.
+ */
 export async function streamAiDocument(
   body: AiRequest,
   onEvent: (event: AiEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${BASE}/ai/generate`, {
+  const [path, payload] = body.kind === 'edit'
+    ? ['/ai/chat', { title: body.title, instruction: body.description, context: body.context ?? '', history: body.history ?? [] }]
+    : ['/ai/documents', { title: body.title, description: body.description, context: body.context ?? '', kind: body.kind, sources: body.sources ?? [] }]
+  const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
     signal,
   })
   if (!res.ok) {
@@ -264,12 +272,38 @@ export async function getAiChat(docId: string): Promise<AiChatMessage[]> {
   return ((await res.json()) as { messages: AiChatMessage[] }).messages
 }
 
+/** Adds messages to the end of the saved chat. Unlike saveAiChat it never replaces what is there. */
+export async function appendAiChat(docId: string, messages: AiChatMessage[]): Promise<void> {
+  await request(`/documents/${encodeURIComponent(docId)}/ai-chat/messages`, { method: 'POST', ...json({ messages }) })
+}
+
 export async function saveAiChat(docId: string, messages: AiChatMessage[]): Promise<void> {
   await request(`/documents/${encodeURIComponent(docId)}/ai-chat`, { method: 'PUT', ...json({ messages }) })
 }
 
+/** What POST /ai/generate can make: exactly one block of this type. */
+export interface AiBlockRequest {
+  type: string
+  prompt: string
+  /** Tells the model what to make when two choices share a type (a table, or a table with formulas). */
+  hint?: string
+  /** A widget's current code, when asking for a change to it (type 'html'). */
+  current?: string
+}
+
+/** Asks the AI for one block of a type. Throws ApiError (503 not set up, 422 nothing usable, 502 model error). */
+export async function generateAiBlock(req: AiBlockRequest, signal?: AbortSignal): Promise<AiBlock> {
+  const res = await fetch(`${BASE}/ai/generate`, { method: 'POST', ...json(req), signal })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null)
+    throw new ApiError(res.status, (detail as { detail?: unknown } | null)?.detail ?? detail)
+  }
+  return ((await res.json()) as { block: AiBlock }).block
+}
+
 /** Asks the AI for an interactive HTML widget (or a change to `current`). Returns the page's code. */
 export async function generateHtmlWidget(prompt: string, current = ''): Promise<string> {
-  const res = await request('/ai/html', { method: 'POST', ...json({ prompt, current }) }, 90000)
-  return ((await res.json()) as { code: string }).code
+  const block = await generateAiBlock({ type: 'html', prompt, current }, AbortSignal.timeout(90000))
+  if (block.type !== 'html') throw new ApiError(422, null)
+  return block.code
 }

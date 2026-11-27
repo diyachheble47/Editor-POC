@@ -42,11 +42,9 @@ Interactive API docs: http://localhost:8000/docs
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/ai/documents` | a workbook, lesson or lesson plan, streamed (`kind`, `title`, `description`, `context`, `sources`) |
-| POST | `/ai/blocks` | one block of a type (`quiz`, `table`, `graph`, `html` ...): `{type, prompt, hint}` gives `{block}` |
+| POST | `/ai/generate` | one block of a type (`quiz`, `table`, `graph`, `html` ...): `{type, prompt, hint, current}` gives `{block}`. `current` is a widget's code to change (`html` only) |
 | POST | `/ai/chat` | change the document as asked, streamed: `{instruction, context, history}` (the last 20 turns reach the model) |
 | GET | `/ai/status` | whether the AI is set up |
-| POST | `/ai/generate` | older route the editor still calls: one handler for every kind, same work as the three above |
-| POST | `/ai/html` | older route: one interactive widget (`/ai/blocks` with type `html` does this) |
 
 The streamed routes send Server-Sent Events: `start`, then `open` / `text` / `close` for text and `block` for
 everything else, then `done` (or `error`).

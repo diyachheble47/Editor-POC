@@ -241,8 +241,13 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     const target = direct ? mainEditor : previewRef.current
     if (!target) return
 
+    // The chat so far goes with an edit, so a follow-up ("make it shorter") is understood.
+    const history = messagesRef.current
+      .filter(m => m.text.trim())
+      .slice(-20)
+      .map(m => ({ role: m.role, text: m.text.slice(0, 2000) }))
     const request: AiRequest = edit
-      ? { title: docTitle.trim() || 'Untitled', kind, context: edit.text,
+      ? { title: docTitle.trim() || 'Untitled', kind, context: edit.text, history,
           description: scoped ? `${prompt}\n\nThe teacher selected this text. Apply the instruction to the blocks given (the selected part) only: "${scoped.text}"` : prompt }
       : direct
         ? { title: prompt.slice(0, 120), description: prompt.length > 120 ? prompt : '', kind, sources }
