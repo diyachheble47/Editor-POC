@@ -1,6 +1,5 @@
 """One new block of a type the teacher picked (the slash menu's Generate)."""
 
-import logging
 from typing import Optional
 
 from ..prompts.edit import SINGLE_BLOCK_SYSTEM
@@ -8,8 +7,9 @@ from . import llm
 from .block_parser import parse_block_line
 from .relevance import ASKED_3D, is_relevant
 from .widget_generation import make_widget
+from ..utils.logger import get_logger
 
-log = logging.getLogger("notebook.ai")
+log = get_logger("ai")
 
 async def generate_block(block_type: str, prompt: str, hint: str = "", current: str = "") -> Optional[dict]:
     """One new block of `block_type` about `prompt`, or None when the model gave nothing usable.

@@ -10,6 +10,28 @@ FastAPI + SQLite. Documents are stored as JSON, 3D model files on disk.
 
 Interactive API docs: http://localhost:8000/docs
 
+## AI model
+
+Every AI call goes through the LiteLLM proxy and always to `gemini/gemini-3.1-flash-lite` (`MODEL` in
+`app/services/litellm_client.py`): no other model is ever asked for. Put these in `backend/.env`:
+
+    LITELLM_BASE_URL=https://litellm-dev.7seers.ai
+    LITELLM_API_KEY=<the key>
+
+## Logs
+
+Every request writes one line (method, path, status, time) to the console and to `data/logs/app.log`
+(2 MB, 3 files kept). Lines carry a request id, also returned as the `X-Request-ID` header, so one request can be
+followed through the route, the service and the model call. Titles, prompts, document text and keys are never
+logged, only sizes, counts, ids, models and timings.
+
+| Setting | Meaning |
+|---|---|
+| `LOG_LEVEL` | `DEBUG`, `INFO` (default), `WARNING`, `ERROR` |
+| `LOG_FILE` | path of the log file; `0` turns the file off |
+
+Failed requests (4xx) are `WARNING`, server errors `ERROR`. A streamed answer is timed to its first byte.
+
 ## Test
 
     .venv/bin/python -m pytest
@@ -30,7 +52,7 @@ Interactive API docs: http://localhost:8000/docs
         widget_generation.py    interactive pages and 3D, and the "does this need 3D" check
         block_parser.py      reads and cleans what the model returns
         relevance.py         drops visuals a topic never mentions
-        llm.py, gemini.py    talking to the model (tests swap llm.text_stream for a fake)
+        llm.py, litellm_client.py  talking to the model through the LiteLLM proxy, always one model (tests swap llm.text_stream for a fake)
         pdf_export.py        HTML to PDF
       prompts/           every prompt sent to the model
         blocks.py            the block format

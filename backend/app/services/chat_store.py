@@ -3,8 +3,11 @@
 import json
 import sqlite3
 
+from ..utils.logger import get_logger
 from ..utils.schemas import ChatMessage
 from .document_store import get_doc_row, now
+
+log = get_logger("chat")
 
 # The oldest messages are dropped past this many.
 MAX_CHAT_MESSAGES = 200
@@ -25,6 +28,7 @@ def append_chat(conn: sqlite3.Connection, doc_id: str, new: list[ChatMessage]) -
     """Adds messages to the end. Unlike replace_chat, two open tabs cannot overwrite each other's messages."""
     messages = (read_chat(conn, doc_id) + [m.model_dump() for m in new])[-MAX_CHAT_MESSAGES:]
     conn.execute(_UPSERT, (doc_id, json.dumps(messages), now()))
+    log.info("chat of %s: %d message(s) added, %d kept", doc_id, len(new), len(messages))
     return messages
 
 

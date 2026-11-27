@@ -14,7 +14,7 @@ npm run dev                      # http://localhost:5173
 
 cd backend
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env             # add GEMINI_API_KEY
+cp .env.example .env             # add LITELLM_BASE_URL and LITELLM_API_KEY
 .venv/bin/uvicorn app.main:app --port 8000 --reload
 ```
 

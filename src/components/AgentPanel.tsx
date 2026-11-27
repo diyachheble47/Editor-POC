@@ -302,7 +302,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     } catch (err) {
       if (!ai.signal.aborted) {
         failure = err instanceof ApiError && err.status === 503
-          ? 'The AI is not set up yet: add GEMINI_API_KEY to backend/.env and restart the backend.'
+          ? 'The AI is not set up yet: add LITELLM_BASE_URL and LITELLM_API_KEY to backend/.env and restart the backend.'
           : err instanceof ApiError && err.status === 422
             ? 'The AI could not take that request. Try rewording it.'
             : 'Could not reach the AI service. Check that the backend is running.'
@@ -535,7 +535,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
 
       <form className="agent-composer" onSubmit={e => { e.preventDefault(); submit() }}>
         {configured === false && (
-          <p className="ai-dialog-warn" role="alert">The AI isn&apos;t set up yet. Add GEMINI_API_KEY to backend/.env and restart the backend.</p>
+          <p className="ai-dialog-warn" role="alert">The AI isn&apos;t set up yet. Add LITELLM_BASE_URL and LITELLM_API_KEY to backend/.env and restart the backend.</p>
         )}
         {scope && (
           <div className="agent-scope" title={scope.text}>

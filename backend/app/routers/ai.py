@@ -6,21 +6,21 @@
   GET  /ai/status      whether the AI is set up
 """
 
-import logging
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from ..services import block_generation, document_generation, gemini
+from ..services import block_generation, document_generation, litellm_client
 from ..utils.schemas import MAX_CHAT_TURNS, BlockRequest, ChatRequest, DocumentRequest
+from ..utils.logger import get_logger
 
-log = logging.getLogger("notebook.ai")
+log = get_logger("ai")
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 
 def _require_ai() -> None:
-    if not gemini.is_configured():
-        raise HTTPException(503, "The AI is not set up: GEMINI_API_KEY is missing on the server.")
+    if not litellm_client.is_configured():
+        raise HTTPException(503, "The AI is not set up: LITELLM_API_KEY or LITELLM_BASE_URL is missing on the server.")
 
 
 def _events(gen) -> StreamingResponse:
@@ -34,7 +34,7 @@ def _events(gen) -> StreamingResponse:
 @router.get("/status")
 def status():
     """Lets the UI tell whether the AI is set up, without exposing the key."""
-    return {"configured": gemini.is_configured()}
+    return {"configured": litellm_client.is_configured()}
 
 
 @router.post("/documents")
@@ -45,6 +45,7 @@ async def generate_document(body: DocumentRequest):
     for everything else one `block`; then `done`. An `error` event ends the stream early.
     """
     _require_ai()
+    log.info("document request: kind=%s, %d source file(s), context %d chars", body.kind, len(body.sources), len(body.context))
     sources = tuple((s.name, s.text) for s in body.sources)
     return _events(document_generation.document_stream(body.kind, body.title, body.description, body.context, sources))
 
@@ -53,12 +54,14 @@ async def generate_document(body: DocumentRequest):
 async def generate_block(body: BlockRequest):
     """One block of the chosen type, as JSON: `{"block": {...}}` (not streamed: it is a single block)."""
     _require_ai()
+    log.info("block request: type=%s, hint=%s, current code %d chars", body.type, bool(body.hint), len(body.current))
     try:
         block = await block_generation.generate_block(body.type, body.prompt, body.hint, body.current)
     except Exception:  # noqa: BLE001 - surfaced to the user as a message
         log.exception("AI block generation failed")
         raise HTTPException(502, "The AI service returned an error. Try again in a moment.") from None
     if block is None:
+        log.warning("no usable %s block came back", body.type)
         raise HTTPException(422, "The AI could not make that block. Try describing it differently.")
     return {"block": block}
 
@@ -71,4 +74,5 @@ async def chat(body: ChatRequest):
     if not body.instruction.strip():
         raise HTTPException(422, "Editing needs an instruction.")
     history = tuple((t.role, t.text) for t in body.history[-MAX_CHAT_TURNS:])
+    log.info("chat edit: %d earlier turn(s) sent, context %d chars", len(history), len(body.context))
     return _events(document_generation.document_stream("edit", body.title, body.instruction, body.context, (), history))

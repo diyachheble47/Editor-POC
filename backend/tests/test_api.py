@@ -98,3 +98,26 @@ def test_streaming_a_never_saved_document_is_404(client):
     doc = client.post("/documents", json={"title": "Empty"}).json()
     assert client.get(f"/documents/{doc['id']}/stream").status_code == 404
 
+
+
+def test_every_request_is_logged_with_an_id_and_no_document_text(client, caplog):
+    import logging
+
+    logging.getLogger("notebook").addHandler(caplog.handler)  # the app's logger does not pass lines on to the root one
+    try:
+        with caplog.at_level(logging.INFO, logger="notebook"):
+            doc = client.post("/documents", json={"title": "Secret lesson title"})
+            miss = client.get("/documents/nope")
+    finally:
+        logging.getLogger("notebook").removeHandler(caplog.handler)
+    assert doc.status_code == 201 and miss.status_code == 404
+    lines = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith("POST /documents -> 201 in ") for m in lines)
+    assert any(m.startswith("GET /documents/nope -> 404 in ") for m in lines)
+    assert any(r.levelno == logging.WARNING and "404" in r.getMessage() for r in caplog.records)  # a failed request stands out
+    assert not any("Secret lesson title" in m for m in lines)  # titles and text are never logged
+    assert doc.headers["x-request-id"] and doc.headers["x-request-id"] != miss.headers["x-request-id"]
+
+
+def test_a_request_id_sent_by_the_caller_is_kept(client):
+    assert client.get("/health", headers={"x-request-id": "abc123"}).headers["x-request-id"] == "abc123"

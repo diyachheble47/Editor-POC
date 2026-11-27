@@ -43,7 +43,7 @@ export function InitStreamPlugin() {
         if (abort.signal.aborted) return // document switched away
         if (!ai.signal.aborted) {
           failure = err instanceof ApiError && err.status === 503
-            ? 'The AI is not set up yet: add GEMINI_API_KEY to backend/.env and restart the backend.'
+            ? 'The AI is not set up yet: add LITELLM_BASE_URL and LITELLM_API_KEY to backend/.env and restart the backend.'
             : 'Could not reach the AI service. Check that the backend is running.'
         }
       } finally {

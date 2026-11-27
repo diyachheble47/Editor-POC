@@ -1,43 +1,40 @@
 """Interactive pages and 3D models: one HTML page from the dedicated prompt, and the check of whether a topic needs 3D."""
 
-import logging
-import os
+import time
 from typing import Optional
 
 from ..prompts.widgets import HTML_SYSTEM, NEEDS_3D_SYSTEM
 from . import llm
 from .block_parser import clean_html
+from ..utils.logger import get_logger
 
-log = logging.getLogger("notebook.ai")
+log = get_logger("ai")
 
-# Interactive pages and 3D models are the hardest thing the model writes, so they get a stronger model and
-# some thinking. Both can be changed in .env without touching code.
-HTML_MODEL = os.getenv("GEMINI_MODEL_HTML", "gemini-3.5-flash")
-HTML_MODELS = [HTML_MODEL, os.getenv("GEMINI_MODEL_HTML_FALLBACK", "gemini-3.8-flash"), ""]  # "" = the normal model
-HTML_THINKING = os.getenv("GEMINI_THINKING_HTML", "low")
-HTML_TIMEOUT_MS = 240_000  # a rich 3D page is a long answer; the usual 90 s is not enough
+# A rich 3D page is a long answer; the usual 90 s is not enough. The model is the same one as everywhere else
+# (litellm_client.MODEL): there is no stronger or fallback model.
+HTML_TIMEOUT_MS = 240_000
+ATTEMPTS = 2  # the proxy is sometimes busy, or the page comes back unusable: one more try
 
 
 async def make_widget(prompt: str, current: str = "", three_d: bool = False) -> Optional[str]:
-    """One interactive widget from the dedicated HTML prompt (bigger budget than an inline block). None if unusable."""
+    """One interactive widget from the dedicated HTML prompt (bigger time budget than an inline block). None if unusable."""
     user = f"Teacher's request:\n{prompt.strip()}"
     if three_d:
         user += "\n\nThis must be a real 3D model built with the T3 kit, rich in detail, as described in the 3D rules."
     if current.strip():
         user += f"\n\n--- current code ---\n{current.strip()}\n--- end of current code ---"
-    # The strong models are sometimes overloaded (503), slow, or give an unusable page: try the next one,
-    # ending with the normal model.
-    for name in HTML_MODELS:
+    started = time.perf_counter()
+    for attempt in range(1, ATTEMPTS + 1):
         try:
-            opts = {"model": name, "thinking": HTML_THINKING, "timeout_ms": HTML_TIMEOUT_MS} if name else {}
-            answer = "".join([piece async for piece in llm.text_stream(HTML_SYSTEM, user, **opts)])
+            answer = "".join([piece async for piece in llm.text_stream(HTML_SYSTEM, user, timeout_ms=HTML_TIMEOUT_MS)])
         except Exception:  # noqa: BLE001
-            log.warning("html model %s failed", name or "(default)", exc_info=True)
+            log.warning("widget attempt %d/%d failed", attempt, ATTEMPTS, exc_info=True)
             continue
         code = clean_html(answer)
         if code:
+            log.info("widget built (attempt %d): %d chars in %d ms", attempt, len(code), int((time.perf_counter() - started) * 1000))
             return code
-        log.warning("html model %s gave an unusable page (%d chars)", name or "(default)", len(answer))
+        log.warning("widget attempt %d/%d gave an unusable page (%d chars)", attempt, ATTEMPTS, len(answer))
     return None
 
 

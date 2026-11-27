@@ -64,7 +64,7 @@ export async function generateBlockAtAnchor(
   } catch (err) {
     if (!ai.signal.aborted) {
       if (err instanceof ApiError && err.status === 503) {
-        failure = 'The AI is not set up yet: add GEMINI_API_KEY to backend/.env and restart the backend.'
+        failure = 'The AI is not set up yet: add LITELLM_BASE_URL and LITELLM_API_KEY to backend/.env and restart the backend.'
       } else if (err instanceof ApiError && typeof err.detail === 'string') {
         failure = err.detail // "could not make that block", or the model failed
       } else {

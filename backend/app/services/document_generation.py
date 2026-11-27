@@ -1,8 +1,8 @@
 """Writing a whole document (or a change to one) as a stream of events the editor builds from."""
 
 import asyncio
-import logging
 import os
+import time
 from typing import AsyncIterator, Sequence
 
 from ..prompts.documents import build_system_prompt, build_user_prompt
@@ -11,10 +11,11 @@ from . import llm
 from .block_parser import MAX_BLOCKS, parse_block_line
 from .relevance import ASKED_3D, block_text, is_relevant
 from .widget_generation import make_widget, needs_3d
+from ..utils.logger import get_logger
 
-log = logging.getLogger("notebook.ai")
+log = get_logger("ai")
 
-
+#stream
 def document_stream(
     kind: str,
     title: str,
@@ -35,6 +36,7 @@ def document_stream(
     user = build_user_prompt(title, description, context, kind, sources, tuple(history))
 
     async def events():
+        started = time.perf_counter()
         n = 0
         blocks = 0
         html_blocks = 0
@@ -130,8 +132,10 @@ def document_stream(
             if job is not None:  # the document ended or the client left: stop building the 3D model
                 job.cancel()
         if blocks == 0:
+            log.warning("%s: the model returned nothing usable", kind)
             yield frame({"t": "error", "message": "The AI returned nothing usable. Try again."})
             return
+        log.info("%s finished: %d blocks in %d ms", kind, blocks, int((time.perf_counter() - started) * 1000))
         yield frame({"t": "done", "blocks": blocks})
 
     return events()

@@ -132,7 +132,7 @@ function HtmlComponent({ nodeKey, initial }: { nodeKey: NodeKey; initial: HtmlDa
       setCodeOpen(false)
     } catch (err) {
       setError(
-        err instanceof ApiError && err.status === 503 ? 'The AI is not set up yet (GEMINI_API_KEY on the backend).'
+        err instanceof ApiError && err.status === 503 ? 'The AI is not set up yet (LITELLM_API_KEY on the backend).'
         : err instanceof ApiError && err.status === 422 ? 'The AI could not make a working activity from that. Try describing it differently.'
         : 'Could not reach the AI service. Check that the backend is running.',
       )

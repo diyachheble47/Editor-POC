@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 
 from ..utils.db import LOCAL_OWNER_ID
+from ..utils.logger import get_logger
 from ..utils.schemas import DocumentCreate, DocumentOut, DocumentPatch, SegmentIn, SegmentOut
+
+log = get_logger("documents")
+
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -44,6 +48,7 @@ def check_revision(row: sqlite3.Row, base_revision: int) -> None:
     # Optimistic concurrency: a client saving from a stale copy gets a 409
     # instead of silently overwriting a newer save (e.g. from another tab).
     if base_revision != row["revision"]:
+        log.warning("save refused for %s: client had revision %s, server has %s", row["id"], base_revision, row["revision"])
         raise HTTPException(
             409,
             detail={"message": "Revision conflict", "serverRevision": row["revision"]},
@@ -67,6 +72,7 @@ def create_document(conn: sqlite3.Connection, body: DocumentCreate) -> DocumentO
         )
     except sqlite3.IntegrityError:
         raise HTTPException(409, "Document id already exists")
+    log.info("document created: %s", doc_id)
     return to_doc(get_doc_row(conn, doc_id))
 
 
@@ -92,6 +98,7 @@ def update_document(conn: sqlite3.Connection, doc_id: str, body: DocumentPatch) 
 def delete_document(conn: sqlite3.Connection, doc_id: str) -> None:
     get_doc_row(conn, doc_id)
     conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+    log.info("document deleted: %s", doc_id)
 
 
 def get_segment(conn: sqlite3.Connection, doc_id: str, position: int) -> SegmentOut:
@@ -116,6 +123,7 @@ def save_segment(conn: sqlite3.Connection, doc_id: str, position: int, body: Seg
     row = get_doc_row(conn, doc_id)
     check_revision(row, body.baseRevision)
     ts = now()
+    state_json = json.dumps(body.state)
     conn.execute(
         """
         INSERT INTO document_segments (id, document_id, position, heading, state, updated_at)
@@ -123,8 +131,9 @@ def save_segment(conn: sqlite3.Connection, doc_id: str, position: int, body: Seg
         ON CONFLICT (document_id, position)
         DO UPDATE SET heading = excluded.heading, state = excluded.state, updated_at = excluded.updated_at
         """,
-        (f"{doc_id}:seg{position}", doc_id, position, body.heading, json.dumps(body.state), ts),
+        (f"{doc_id}:seg{position}", doc_id, position, body.heading, state_json, ts),
     )
+    log.info("document saved: %s segment %d, %d bytes, revision %d -> %d", doc_id, position, len(state_json), row["revision"], row["revision"] + 1)
     conn.execute(
         "UPDATE documents SET updated_at = ?, word_count = ?, title = ?, revision = revision + 1 WHERE id = ?",
         (

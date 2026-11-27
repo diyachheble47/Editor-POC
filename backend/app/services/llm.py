@@ -2,12 +2,13 @@
 
 from typing import AsyncIterator
 
-from . import gemini
+from . import litellm_client
 
 
 def text_stream(system: str, user: str, **options) -> AsyncIterator[str]:
-    """The model's reply as text pieces. Callers use `llm.text_stream(...)` so a test can replace it."""
-    return gemini.gemini_text_stream(system, user, **options)
+    """The model's reply as text pieces (`timeout_ms` is the only option). Callers use `llm.text_stream(...)` so a test
+    can replace it."""
+    return litellm_client.litellm_text_stream(system, user, **options)
 
 
 async def lines_from(chunks: AsyncIterator[str]) -> AsyncIterator[str]:
