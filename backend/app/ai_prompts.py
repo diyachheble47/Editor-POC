@@ -1,5 +1,7 @@
 """Prompts for the lesson generator."""
 
+from pathlib import Path
+
 BLOCK_FORMAT = """\
 Reply with ONE JSON object per line (JSON Lines). No markdown, no code fences,
 no commentary before or after. Each line is one block of the document, in order.
@@ -22,9 +24,14 @@ The allowed blocks are exactly these:
       a clean table; the FIRST row is the header (shown in a coloured band). At most 20 rows x 8 columns.
       Only if you need calculations, a cell that starts with = is a spreadsheet formula, e.g. "=SUM(B2:B4)"
       (cells are A1, B2, ...); such a table becomes a spreadsheet grid instead.
-{"type":"html","title":"Pendulum simulator","code":"<!doctype html>...a complete self-contained page..."}
-      an interactive activity (a simulation with sliders, a drag-and-drop game, a poll). ONLY when the teacher
-      asked for something interactive; otherwise never. At most 2. See HTML RULES below.
+{"type":"html","title":"Pendulum simulator","code":"<p></p>"}
+      an interactive activity (a simulation with sliders, a drag-and-drop game, a poll) or a 3D model the student
+      can rotate and click. Give a clear title and leave code as "<p></p>": the page itself is built separately
+      from the title, so put the idea in the title ("3D human body: skin, skeleton, organs"). ONLY when the teacher
+      asked for something interactive or for 3D, OR when the topic is a physical structure that is clearly better
+      understood by rotating it (anatomy, an organ, a cell, a molecule's shape, a planet or the solar system,
+      a machine, a building, a landform): then add ONE block whose title starts with "3D ". Otherwise never.
+      At most 2.
 {"type":"tabs","items":[{"title":"1. Modeling","text":"..."},{"title":"2. Texturing","text":"..."}]}
       pills that each reveal a short text: the steps of a process, stages, categories. 2-8 items.
 {"type":"quiz","questions":[{"q":"What is 2+2?","options":["3","4","5"],"answer":1,"why":"Two plus two is four."}]}
@@ -64,7 +71,7 @@ The allowed blocks are exactly these:
       j1->r1->j2, j1->r2->j2, j2->battery. At most 10 parts per circuit.
 
 HTML RULES (for the html block): one self-contained page: inline <style> and <script>, plain JavaScript, no
-external files, no CDN, no network calls, no iframes. Under 8000 characters. Do not use vh units or fixed
+external files, no CDN, no network calls, no iframes. Under 14000 characters. Do not use vh units or fixed
 page heights (the block sizes itself to the content). Colours: use var(--c-text), var(--c-surface),
 var(--c-border), var(--c-accent), var(--c-accent-bg), var(--c-success), var(--c-danger) with sensible
 fallbacks so it fits light and dark themes. Make it work by mouse and keyboard, and do not use alert,
@@ -256,6 +263,9 @@ Output ONLY the HTML, no explanation and no code fences.
 Rules:
 - One page: inline <style> and <script>, plain JavaScript. No external files, no CDN, no network calls
   (fetch, XMLHttpRequest, WebSocket), no iframes, no cookies or localStorage.
+- 3D or not: if the teacher asks for 3D, a model, or something to rotate, or the topic is a physical structure
+  (body, organ, cell, molecule shape, planet system, machine, building, landform, crystal), build a real 3D scene
+  with the T3 kit described under 3D below. For processes, graphs, quizzes and simulations use 2D (SVG, canvas).
 - Up to about 15000 characters. Make it complete and polished, but keep it to one clear idea.
 - Sizing: give the main visual a fixed pixel height (for example 420px) and a width of 100%. Do not use vh or
   vw units, and do not set height:100% on the page, because the frame sizes itself to the content.
@@ -275,3 +285,58 @@ Rules:
 - You may report what a student does with: window.tnb && tnb.emit("answer", { question: "...", correct: true }).
   Call it when a student answers, submits or finishes (a short name and a small object), nothing else.
 """
+
+# 3D pages are written against the T3 kit (the editor loads it with three.js into the frame).
+# t3_example.html is a worked example of the level of detail wanted; it is shown to the model.
+_T3_EXAMPLE = (Path(__file__).with_name("t3_example.html")).read_text(encoding="utf-8")
+_T3_EXAMPLE_2 = (Path(__file__).with_name("t3_example_solar.html")).read_text(encoding="utf-8")
+
+T3_GUIDE = """
+
+3D (T3 KIT)
+three.js r128 (global THREE) and the T3 kit are already loaded in the page. NEVER add a <script src>, never load
+model files or textures, never use OrbitControls. Put a <div id="s3d"></div> in the page and write
+const S = T3.stage('#s3d', { height: 460 }). It gives a lit dark stage, drag to rotate, zoom, resizing and
+click / hover picking. Build the model into S.root:
+
+  T3.part(parent, geometry, color, o)                 any THREE geometry (Torus, Cone, Box, Extrude...) as a part
+  T3.limb(parent, [x,y,z], [x,y,z], radius, color, o) a rod, bone, arm or pipe between two points; o.r2 = radius at the
+                                                      second end, o.knobs = 1.3 puts a ball at each end (a joint)
+  T3.tube(parent, [[x,y,z], ...], radius, color, o)   a smooth curved tube through points (vessel, gut, DNA strand,
+                                                      spring, cable, rail); 4-10 points
+  T3.blob(parent, [rx,ry,rz], color, o)               an ellipsoid; o.noise 0.03-0.1 makes it organic and lumpy
+                                                      (organs, rocks, fruit, cells, planets with craters)
+  T3.lathe(parent, [[radius, height], ...], color, o) a shape of revolution (torso, vase, bottle, tower, cup, cell)
+  T3.group(parent, { pos, rot, layer })
+
+  o (all optional): name, info, layer, pos [x,y,z], rot [x,y,z], scale (number or [x,y,z]), opacity 0..1, rough,
+  metal, glow (hex), double, shell. name + info make a part clickable: info is ONE accurate fact sentence shown in
+  the info card. layer is a string; parts with the same layer are toggled together. shell:true marks a translucent
+  outer cover (skin, atmosphere, casing) that must not block clicking the parts inside it.
+  S.ui({ layers: [{ id, label, on }], hint }) adds the toggle buttons, zoom / reset / spin buttons and the info
+  card. Call it LAST. S.onSelect(function (data) {...}) gives you what was clicked (data.name, data.info) if you
+  want extra readouts or a small quiz under the stage. +y is up, +z faces the viewer, units are free and the
+  camera fits the model by itself.
+
+Quality bar (this is what the teacher is judging): never a handful of boxes or one sphere. Build a recognisable,
+detailed, correctly proportioned model with 25 to 80 named parts, grouped in 2-4 layers that teach (for example
+outside / structure / inside, or crust / mantle / core). Use the right tool for each shape: blob with noise for
+organic things, tube for anything curved, limb for rods and joints, lathe for round symmetric things, part with a
+THREE geometry for the rest. Loop over [-1, 1] to mirror left and right. Use realistic colours. Every named part
+gets a correct one-sentence info. Keep to about 14000 characters.
+
+Example of the level of detail wanted (a human body). Adapt the technique to the requested subject and never
+copy the body unless that is the subject:
+
+""" + _T3_EXAMPLE + """
+
+A second example, an orbital scene (flat scenes are tilted toward the viewer automatically; mind how it fills the\nspace with many small parts in loops, uses orbit rings, a ring around a planet, and a named part for everything):
+
+""" + _T3_EXAMPLE_2 + """
+
+Fill the whole space of the model: for a cell that means a large translucent membrane, a nucleus with a visible
+nucleolus, 8-12 mitochondria, a stacked Golgi, a folded ER made of tubes, dozens of ribosomes in a loop, vesicles,
+lysosomes. Never leave big empty areas, never use thin floating sticks as decoration, and place parts so they touch
+or sit inside each other the way the real thing does.
+"""
+HTML_SYSTEM = HTML_SYSTEM + T3_GUIDE

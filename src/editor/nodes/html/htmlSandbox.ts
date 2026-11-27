@@ -62,12 +62,23 @@ const BASE_CSS = (vars: Record<string, string>) =>
   'html,body{background:transparent !important}body{margin:0;padding:4px 2px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;' +
   'font-size:15px;line-height:1.55;color:var(--c-text,#1a1a1a)}*{box-sizing:border-box}'
 
-/** Wraps a teacher's / AI's HTML (a fragment or a whole page) with the policy, theme and SDK. */
-export function buildSrcDoc(code: string, vars: Record<string, string>, id: string): string {
+// Pages written for three.js usually carry their own CDN <script src>, which the policy blocks.
+const THREE_TAG = /<script\b[^>]*\bsrc=["'][^"']*three(?:\.min)?\.js[^"']*["'][^>]*>\s*<\/script>/gi
+
+/** True when the page draws with three.js, so the editor should hand it the library. */
+export const usesThree = (code: string) => /\b(THREE|T3)\b/.test(code)
+
+/**
+ * Wraps a teacher's / AI's HTML (a fragment or a whole page) with the policy, theme and SDK.
+ * `three` is the library source; pass it for pages that use THREE and it is inlined (their own CDN tag is dropped).
+ */
+export function buildSrcDoc(code: string, vars: Record<string, string>, id: string, three?: string): string {
+  if (three) code = code.replace(THREE_TAG, '')
   const head =
     `<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<style>${BASE_CSS(vars)}</style><script>${SDK(id).replace(/<\/script/gi, '<\\/script')}</script>`
+    `<style>${BASE_CSS(vars)}</style><script>${SDK(id).replace(/<\/script/gi, '<\\/script')}</script>` +
+    (three ? `<script>${three.replace(/<\/script/gi, '<\\/script')}</script>` : '')
   if (/<head[^>]*>/i.test(code)) return code.replace(/<head[^>]*>/i, m => `${m}${head}`)
   if (/<html[^>]*>/i.test(code)) return code.replace(/<html[^>]*>/i, m => `${m}<head>${head}</head>`)
   return `<!doctype html><html><head>${head}</head><body>${code}</body></html>`

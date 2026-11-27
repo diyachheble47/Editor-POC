@@ -12,7 +12,8 @@ import { useDocument } from '../../../context/DocumentContext'
 import { generateHtmlWidget } from '../../../storage/api'
 import { ApiError } from '../../../storage/api'
 import { HtmlCodeEditor } from './HtmlCodeEditor'
-import { MAX_HTML, SANDBOX, THEME_VARS, buildSrcDoc, clampHeight, newBlockId } from './htmlSandbox'
+import { MAX_HTML, SANDBOX, THEME_VARS, buildSrcDoc, clampHeight, newBlockId, usesThree } from './htmlSandbox'
+import { loadThree } from './threeSource'
 
 export type HtmlData = { code: string; title: string; blockId: string }
 export type SerializedHtmlNode = Spread<HtmlData, SerializedLexicalNode>
@@ -50,12 +51,22 @@ function SandboxFrame({ code, blockId, run = 0, minHeight = 80 }: { code: string
   }, [blockId])
 
   // Waits for the theme colours so the widget never flashes in the wrong ones.
-  const srcDoc = useMemo(() => (vars ? buildSrcDoc(code, vars, blockId) : ''), [code, vars, blockId])
+  // A page that draws with three.js gets the library inlined; wait for it so the page never runs without it.
+  const needsThree = useMemo(() => usesThree(code), [code])
+  const [three, setThree] = useState<string | null>(null)
+  useEffect(() => {
+    if (!needsThree) return
+    let live = true
+    void loadThree().then(src => { if (live) setThree(src) }).catch(() => { if (live) setThree('/* three.js failed to load */') })
+    return () => { live = false }
+  }, [needsThree])
+  const ready = vars && (!needsThree || three)
+  const srcDoc = useMemo(() => (ready && vars ? buildSrcDoc(code, vars, blockId, needsThree ? three ?? undefined : undefined) : ''), [code, vars, blockId, ready, needsThree, three])
   useEffect(() => { setLoaded(false) }, [srcDoc, run])
   return (
     <div className="html-stage" style={{ minHeight: Math.max(minHeight, height) }}>
       {!loaded && <div className="html-skeleton" aria-hidden="true" />}
-      {vars && (
+      {ready && (
         <iframe
           key={run}
           ref={frame}

@@ -1,9 +1,25 @@
 import { describe, test, expect } from 'vitest'
 import { createEditor, $getRoot } from 'lexical'
 import { HtmlNode } from './HtmlNode'
-import { CSP, SANDBOX, buildSrcDoc, clampHeight } from './htmlSandbox'
+import { CSP, SANDBOX, buildSrcDoc, clampHeight, usesThree } from './htmlSandbox'
 
 const vars = { '--c-text': '#fff' }
+
+describe('three.js pages', () => {
+  const page = '<html><head><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script></head><body><script>new THREE.Scene()</script></body></html>'
+  test('a page that uses THREE is recognised', () => {
+    expect(usesThree(page)).toBe(true)
+    expect(usesThree('<p>no 3d</p>')).toBe(false)
+  })
+  test('the library is inlined before the page script, the CDN tag is dropped, and the policy stays strict', () => {
+    const doc = buildSrcDoc(page, vars, 'b1', 'window.THREE={Scene:function(){}};/*x</script>y*/')
+    expect(doc).not.toContain('cdnjs.cloudflare.com')
+    expect(doc).toContain('window.THREE=')
+    expect(doc).not.toContain('x</script>y') // the library cannot close its own script tag
+    expect(doc.indexOf('window.THREE=')).toBeLessThan(doc.indexOf('new THREE.Scene()'))
+    expect(doc).toContain(`content="${CSP}"`)
+  })
+})
 
 describe('buildSrcDoc', () => {
   test('the iframe is allowed scripts only, and the policy blocks the network', () => {

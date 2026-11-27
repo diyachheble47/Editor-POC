@@ -1,0 +1,30 @@
+<!doctype html>
+<div id="s3d"></div>
+<script>
+const S = T3.stage('#s3d', { height: 440 })
+const R = S.root
+const planets = [   // name, orbit radius, size, colour, fact
+  ['Mercury', 3.2, 0.16, 0x9b9b9b, 'The smallest planet and the closest to the Sun: a year lasts 88 Earth days.'],
+  ['Venus', 4.4, 0.34, 0xe8c27a, 'The hottest planet (about 465 °C) because its thick CO2 air traps heat.'],
+  ['Earth', 5.7, 0.36, 0x3b82d6, 'The only known planet with life, with liquid water on its surface.'],
+  ['Mars', 7.0, 0.22, 0xc1502e, 'The red planet: iron oxide dust colours it. Home to Olympus Mons, the tallest volcano known.'],
+  ['Jupiter', 10.5, 1.15, 0xd9a066, 'The largest planet: more than 1,300 Earths would fit inside it.'],
+  ['Saturn', 14, 0.98, 0xe4d191, 'Famous for its rings of ice and rock; its density is lower than water.'],
+  ['Uranus', 17.5, 0.55, 0x8fd8e0, 'An ice giant that spins on its side, tilted about 98 degrees.'],
+  ['Neptune', 20.5, 0.53, 0x3f5fd8, 'The farthest planet, with the fastest winds in the Solar System.'],
+]
+T3.blob(R, [1.7, 1.7, 1.7], 0xffc83d, { name: 'Sun', info: 'A star holding 99.8% of the Solar System\'s mass. Its core fuses hydrogen into helium.', layer: 'planets', glow: 0xff9a00 })
+planets.forEach(([n, r, sz, c, fact], i) => {
+  const a = i * 0.9 + 0.4
+  T3.part(R, new THREE.TorusGeometry(r, 0.02, 6, 120), 0x66708a, { layer: 'orbits', rot: [Math.PI / 2, 0, 0], opacity: 0.6 })
+  const g = T3.group(R, { pos: [Math.cos(a) * r, 0, Math.sin(a) * r], layer: 'planets' })
+  T3.blob(g, [sz, sz, sz], c, { name: n, info: fact, noise: 0.01 })
+  if (n === 'Saturn') T3.part(g, new THREE.RingGeometry(sz * 1.35, sz * 2.1, 64), 0xcdbb88, { name: 'Saturn\'s rings', info: 'Billions of ice chunks, some as big as houses, in a ring only about 10 m thick.', rot: [Math.PI / 2.3, 0, 0], double: true, opacity: 0.85 })
+  if (n === 'Earth') T3.blob(g, [0.09, 0.09, 0.09], 0xdddddd, { name: 'Moon', info: 'Earth\'s only natural satellite, about a quarter of its width.', pos: [0.6, 0.05, 0] })
+})
+for (let k = 0; k < 140; k++) {   // asteroid belt between Mars and Jupiter
+  const a = k * 2.4, r = 8.4 + Math.sin(k * 7.1) * 0.5
+  T3.blob(R, [0.05, 0.04, 0.05], 0x8a8174, { name: 'Asteroid belt', info: 'Millions of rocky leftovers from the early Solar System between Mars and Jupiter.', pos: [Math.cos(a) * r, Math.sin(k * 3.3) * 0.12, Math.sin(a) * r], layer: 'planets', noise: 0.2 })
+}
+S.ui({ layers: [{ id: 'planets', label: 'Bodies', on: true }, { id: 'orbits', label: 'Orbits', on: true }], hint: 'Drag to rotate. Click a planet to learn about it.' })
+</script>

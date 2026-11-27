@@ -28,7 +28,7 @@ CIRCUIT_PARTS = {
 MAX_TABLE_ROWS, MAX_TABLE_COLS, MAX_CELL = 20, 8, 200
 MAX_MATRIX = 6
 MAX_TABS, MAX_QUESTIONS, MAX_OPTIONS = 8, 10, 6
-MAX_HTML = 20000
+MAX_HTML = 30000
 # Interactive HTML runs in a locked iframe (no network, no access to the page), which is the
 # real protection. This only turns away code that could not work there anyway (it needs a
 # network, a CDN or the parent page), so the teacher gets a clear "try again" instead of a

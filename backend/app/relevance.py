@@ -37,6 +37,10 @@ _SUBJECTS = {
 }
 
 
+# The teacher asked for 3D by name.
+ASKED_3D = re.compile(r"\b(3\s*-?\s*d|three[\s-]*d(imensional)?)\b", re.I)
+
+
 def block_text(block: dict) -> str:
     """The readable text of a block, used to learn what the document is about so far."""
     parts = [block.get("text") or ""]
