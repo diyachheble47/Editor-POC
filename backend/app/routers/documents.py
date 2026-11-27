@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from ..db import LOCAL_OWNER_ID, get_conn
 from ..sse import sse
-from ..schemas import ChatIn, ChatOut, DocumentCreate, DocumentOut, DocumentPatch, SegmentIn, SegmentOut
+from ..schemas import ChatAppend, ChatIn, ChatOut, DocumentCreate, DocumentOut, DocumentPatch, SegmentIn, SegmentOut
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -99,7 +99,7 @@ def delete_document(doc_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
     return Response(status_code=204)
 
-
+# no seprate segmets append in doc json
 @router.get("/{doc_id}/segments/{position}", response_model=SegmentOut)
 def get_segment(doc_id: str, position: int, conn: sqlite3.Connection = Depends(get_conn)):
     doc = get_doc_row(conn, doc_id)
@@ -219,6 +219,25 @@ def get_ai_chat(doc_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     get_doc_row(conn, doc_id)
     row = conn.execute("SELECT messages FROM ai_chats WHERE document_id = ?", (doc_id,)).fetchone()
     return ChatOut(messages=json.loads(row["messages"]) if row else [])
+
+
+# Adds messages to the end of the saved chat. Unlike PUT (which replaces the whole conversation, so two open
+# tabs overwrite each other), this only ever appends. The oldest messages are dropped past MAX_CHAT_MESSAGES.
+MAX_CHAT_MESSAGES = 200
+
+
+@router.post("/{doc_id}/ai-chat/messages", response_model=ChatOut)
+def append_ai_chat(doc_id: str, body: ChatAppend, conn: sqlite3.Connection = Depends(get_conn)):
+    get_doc_row(conn, doc_id)
+    row = conn.execute("SELECT messages FROM ai_chats WHERE document_id = ?", (doc_id,)).fetchone()
+    saved = json.loads(row["messages"]) if row else []
+    messages = (saved + [m.model_dump() for m in body.messages])[-MAX_CHAT_MESSAGES:]
+    conn.execute(
+        "INSERT INTO ai_chats (document_id, messages, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(document_id) DO UPDATE SET messages = excluded.messages, updated_at = excluded.updated_at",
+        (doc_id, json.dumps(messages), now()),
+    )
+    return ChatOut(messages=messages)
 
 
 @router.put("/{doc_id}/ai-chat", response_model=ChatOut)

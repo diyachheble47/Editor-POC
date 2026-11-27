@@ -193,11 +193,21 @@ def build_system_prompt(kind: str, from_sources: bool = False) -> str:
 
 
 def build_user_prompt(
-    title: str, description: str, context: str = "", kind: str = "", sources: tuple[tuple[str, str], ...] = ()
+    title: str,
+    description: str,
+    context: str = "",
+    kind: str = "",
+    sources: tuple[tuple[str, str], ...] = (),
+    history: tuple[tuple[str, str], ...] = (),
 ) -> str:
     if kind == "edit":
+        talk = ""
+        if history:
+            # Earlier turns of the chat, so "make it shorter" or "now the same for question 2" can be understood.
+            lines = "\n".join(f"{'Teacher' if role == 'user' else 'Assistant'}: {text.strip()}" for role, text in history)
+            talk = f"Conversation so far (for context only; do what the last instruction below asks):\n{lines}\n\n"
         return (
-            f"Document title: {title}\n\nTeacher's instruction:\n{description.strip()}\n\n"
+            f"Document title: {title}\n\n{talk}Teacher's instruction:\n{description.strip()}\n\n"
             f"--- document blocks ---\n{context.strip()}\n--- end of document blocks ---"
         )
     parts = [f"Title: {title}"]
@@ -250,6 +260,13 @@ Rules:
 - Keep the language of the document.
 """
 EDIT_SYSTEM = EDIT_SYSTEM + _BLOCK_TYPES + EDIT_RULES
+
+# One block of a type the teacher picked (the slash menu's "Generate"): no title, no intro, nothing else.
+SINGLE_BLOCK_SYSTEM = (
+    "You are an expert teacher's assistant adding ONE block to a document in a document editor. "
+    "Reply with exactly one block, on a single line, as JSON, and nothing else: no heading, no title, "
+    "no intro text, no explanation and no other block.\n\n"
+) + _BLOCK_TYPES + EDIT_RULES
 
 
 

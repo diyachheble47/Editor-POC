@@ -65,7 +65,7 @@ def test_generate_rejects_bad_input(client, monkeypatch):  # noqa: F811
 
 
 def test_generate_streams_blocks_from_the_model(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
@@ -86,7 +86,7 @@ def test_generate_streams_blocks_from_the_model(client, monkeypatch):  # noqa: F
 
 
 def test_generate_reports_a_model_failure_without_leaking_details(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "super-secret-key")
 
@@ -101,7 +101,7 @@ def test_generate_reports_a_model_failure_without_leaking_details(client, monkey
 
 
 def test_generate_with_no_usable_output_is_an_error(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setattr(ai_router, "text_stream", fake_model("sorry, I cannot do that"))
@@ -193,7 +193,7 @@ def test_keep_block_is_only_a_valid_reference():
 
 
 def test_edit_needs_an_instruction_but_context_is_optional(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setattr(ai_router, "text_stream", fake_model('{"type":"paragraph","text":"New."}\n'))
@@ -208,7 +208,7 @@ def test_edit_needs_an_instruction_but_context_is_optional(client, monkeypatch):
 
 
 def test_edit_streams_keep_and_changed_blocks(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     seen = {}
 
@@ -262,7 +262,7 @@ def test_section_toc_tabs_and_quiz_blocks_are_cleaned():
 
 
 def test_generate_types_a_section_heading_like_a_heading(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
@@ -290,7 +290,7 @@ def test_clean_html_keeps_self_contained_pages_and_turns_away_network_code():
 
 
 def test_html_endpoint_returns_the_widget_or_a_clear_error(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     seen = {}
@@ -312,7 +312,7 @@ def test_html_endpoint_returns_the_widget_or_a_clear_error(client, monkeypatch):
 
 
 def test_html_block_in_a_document_only_when_interactive_was_asked(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     line = json.dumps({"type": "html", "title": "Sim", "code": GOOD_HTML}) + "\n"
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -355,7 +355,7 @@ SOURCE = {"name": "Acids_Ch4.pdf", "text": "[page 2]\nAcids taste sour and turn 
 
 
 def test_sources_reach_the_model_with_the_write_only_from_them_rule(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     seen = []
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -370,7 +370,7 @@ def test_sources_reach_the_model_with_the_write_only_from_them_rule(client, monk
 
 
 def test_without_sources_the_rule_is_not_added(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     seen = []
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -389,7 +389,7 @@ def test_sources_are_limited_in_number_and_total_size(client, monkeypatch):  # n
 
 
 def test_a_source_cannot_fake_the_end_marker_or_break_the_name_line(client, monkeypatch):  # noqa: F811
-    import app.routers.ai as ai_router
+    import app.ai_service as ai_router
 
     seen = []
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -403,7 +403,7 @@ def test_a_source_cannot_fake_the_end_marker_or_break_the_name_line(client, monk
 
 
 def test_a_3d_model_is_added_when_asked_or_when_the_topic_needs_it(client, monkeypatch):  # noqa: F811
-    from app.routers import ai as ai_router
+    import app.ai_service as ai_router
 
     page = "<!doctype html><div id='s3d'></div><script>const S = T3.stage('#s3d')</script>"
 
@@ -422,3 +422,147 @@ def test_a_3d_model_is_added_when_asked_or_when_the_topic_needs_it(client, monke
     assert len(pages(heart)) == 1 and "T3.stage" in pages(heart)[0]["code"]  # topic needs it
     assert len(pages(asked)) == 1  # teacher said 3D
     assert pages(interest) == []  # neither
+
+
+# ── The new routes: documents, blocks, chat, and appending to the chat history ──────────────────
+
+
+def test_documents_route_streams_a_document_and_refuses_edit(client, monkeypatch):  # noqa: F811
+    import app.ai_service as svc
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
+    monkeypatch.setattr(svc, "text_stream", fake_model('{"type":"heading","level":1,"text":"Acids"}\n{"type":"paragraph","text":"Sour."}\n'))
+    ev = frames(client.post("/ai/documents", json={"title": "Acids", "description": "", "kind": "workbook"}))
+    assert ev[0]["t"] == "start" and ev[-1] == {"t": "done", "blocks": 2}
+    # `edit` is the chat's job, not a document kind
+    assert client.post("/ai/documents", json={"title": "Acids", "kind": "edit"}).status_code == 422
+
+
+def test_documents_route_gives_the_same_stream_as_the_older_generate_route(client, monkeypatch):  # noqa: F811
+    import app.ai_service as svc
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
+    monkeypatch.setattr(svc, "text_stream", fake_model('{"type":"paragraph","text":"Same."}\n'))
+    body = {"title": "Acids", "description": "class 10", "kind": "lesson"}
+    assert frames(client.post("/ai/documents", json=body)) == frames(client.post("/ai/generate", json=body))
+
+
+def test_blocks_route_returns_one_block_of_the_asked_type(client, monkeypatch):  # noqa: F811
+    import app.ai_service as svc
+
+    seen = {}
+
+    def model(system, user, **kw):
+        seen["system"], seen["user"] = system, user
+        # a stray paragraph first, then the quiz: only the quiz counts
+        return fake_model('{"type":"paragraph","text":"Intro"}\n{"type":"quiz","title":"Acids","questions":[{"q":"pH of lemon juice?","options":["2","7"],"answer":0}]}\n')(system, user)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr(svc, "text_stream", model)
+    res = client.post("/ai/blocks", json={"type": "quiz", "prompt": "acids and bases"})
+    assert res.status_code == 200 and res.json()["block"]["type"] == "quiz"
+    assert "ONE new quiz block about: acids and bases" in seen["user"]
+    assert "exactly one block" in seen["system"]
+
+
+def test_blocks_route_uses_the_hint_and_rejects_unknown_types_and_empty_answers(client, monkeypatch):  # noqa: F811
+    import app.ai_service as svc
+
+    seen = {}
+
+    def model(system, user, **kw):
+        seen["user"] = user
+        return fake_model("sorry, I cannot do that")(system, user)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr(svc, "text_stream", model)
+    res = client.post("/ai/blocks", json={"type": "table", "prompt": "marks", "hint": "a table with formulas"})
+    assert res.status_code == 422 and "It must be a table with formulas." in seen["user"]
+    assert client.post("/ai/blocks", json={"type": "banana", "prompt": "x"}).status_code == 422
+    assert client.post("/ai/blocks", json={"type": "quiz", "prompt": ""}).status_code == 422
+
+
+def test_blocks_route_html_uses_the_widget_pass(client, monkeypatch):  # noqa: F811
+    import app.ai_service as svc
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr(svc, "text_stream", fake_model("<!doctype html><p>poll</p>"))
+    res = client.post("/ai/blocks", json={"type": "html", "prompt": "a poll"})
+    assert res.status_code == 200 and res.json()["block"] == {"type": "html", "title": "a poll", "code": "<!doctype html><p>poll</p>"}
+
+
+def test_blocks_and_chat_without_a_key_are_503(client, monkeypatch):  # noqa: F811
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert client.post("/ai/blocks", json={"type": "quiz", "prompt": "x"}).status_code == 503
+    assert client.post("/ai/chat", json={"instruction": "x"}).status_code == 503
+    assert client.post("/ai/documents", json={"title": "x", "kind": "lesson"}).status_code == 503
+
+
+def test_chat_sends_the_conversation_so_far_to_the_model(client, monkeypatch):  # noqa: F811
+    import app.ai_service as svc
+
+    seen = {}
+
+    def model(system, user, **kw):
+        seen["user"] = user
+        return fake_model('{"type":"keep","ref":0}\n')(system, user)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
+    monkeypatch.setattr(svc, "text_stream", model)
+    history = [{"role": "user", "text": "add a table of acids"}, {"role": "assistant", "text": "Added a table."}]
+    ev = frames(client.post("/ai/chat", json={"instruction": "make it shorter", "context": "#0 [paragraph] Acids", "history": history}))
+    assert ev[-1]["t"] == "done"
+    assert "Teacher: add a table of acids" in seen["user"] and "Assistant: Added a table." in seen["user"]
+    assert "make it shorter" in seen["user"]
+    # only the last turns are used
+    many = [{"role": "user", "text": f"turn {i}"} for i in range(30)]
+    client.post("/ai/chat", json={"instruction": "go", "history": many})
+    assert "turn 29" in seen["user"] and "turn 9" not in seen["user"] and "turn 10" in seen["user"]
+
+
+def test_chat_edit_without_history_is_what_the_older_route_sends(client, monkeypatch):  # noqa: F811
+    import app.ai_service as svc
+
+    users = []
+
+    def model(system, user, **kw):
+        users.append(user)
+        return fake_model('{"type":"paragraph","text":"New."}\n')(system, user)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
+    monkeypatch.setattr(svc, "text_stream", model)
+    old = frames(client.post("/ai/generate", json={"title": "T", "description": "shorter", "context": "#0 [paragraph] A", "kind": "edit"}))
+    new = frames(client.post("/ai/chat", json={"title": "T", "instruction": "shorter", "context": "#0 [paragraph] A"}))
+    assert old == new and users[0] == users[1]
+    assert client.post("/ai/chat", json={"instruction": "   "}).status_code == 422
+
+
+def test_chat_messages_are_appended_not_replaced(client):  # noqa: F811
+    doc = client.post("/documents", json={"title": "Chat doc"}).json()
+    url = f"/documents/{doc['id']}/ai-chat/messages"
+    one = {"id": "m1", "role": "user", "text": "first", "at": 1}
+    two = {"id": "m2", "role": "assistant", "text": "second", "at": 2}
+    assert client.post(url, json={"messages": [one]}).json()["messages"] == [dict(one, kind=None, status=None, peek=None)]
+    assert [m["id"] for m in client.post(url, json={"messages": [two]}).json()["messages"]] == ["m1", "m2"]
+    assert [m["id"] for m in client.get(f"/documents/{doc['id']}/ai-chat").json()["messages"]] == ["m1", "m2"]
+    # a replace through PUT still works the old way
+    assert client.put(f"/documents/{doc['id']}/ai-chat", json={"messages": [two]}).json()["messages"][0]["id"] == "m2"
+    assert client.post("/documents/nope/ai-chat/messages", json={"messages": [one]}).status_code == 404
+    assert client.post(url, json={"messages": []}).status_code == 422
+
+
+def test_chat_history_keeps_only_the_newest_messages(client):  # noqa: F811
+    from app.routers.documents import MAX_CHAT_MESSAGES
+
+    doc = client.post("/documents", json={"title": "Long chat"}).json()
+    url = f"/documents/{doc['id']}/ai-chat/messages"
+    n = 0
+    for _ in range(MAX_CHAT_MESSAGES // 20 + 1):
+        client.post(url, json={"messages": [{"id": f"m{n + i}", "role": "user", "text": "x"} for i in range(20)]})
+        n += 20
+    saved = client.get(f"/documents/{doc['id']}/ai-chat").json()["messages"]
+    assert len(saved) == MAX_CHAT_MESSAGES and saved[-1]["id"] == f"m{n - 1}"
