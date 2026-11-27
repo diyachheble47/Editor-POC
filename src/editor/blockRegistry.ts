@@ -300,18 +300,6 @@ export const BLOCK_REGISTRY: BlockDef[] = [
     inSidebar: false,
   },
   {
-    key: 'diagram',
-    label: 'Diagram',
-    icon: '📊',
-    description: 'Concept map or flowchart.',
-    category: 'stem',
-    status: 'coming-soon',
-    keywords: ['diagram', 'chart', 'flowchart', 'concept'],
-    insert: () => {},
-    inSlash: true,
-    inSidebar: false,
-  },
-  {
     key: 'model-3d',
     label: '3D Model',
     icon: '🧊',

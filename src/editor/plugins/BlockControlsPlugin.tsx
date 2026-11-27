@@ -8,9 +8,11 @@ import {
   $getRoot,
   $isDecoratorNode,
   $isElementNode,
+  $isParagraphNode,
   $isTextNode,
 } from 'lexical'
-import type { ElementNode, LexicalNode, NodeKey } from 'lexical'
+import { $createListItemNode, $isListItemNode, $isListNode } from '@lexical/list'
+import type { ElementNode, LexicalEditor, LexicalNode, NodeKey } from 'lexical'
 import { setSelectedBlockKey } from '../blockSelection'
 import { dragLabel, dropSlot, edgeScrollSpeed, isNoopSlot, slotLineY } from './blockDrag'
 
@@ -52,9 +54,66 @@ interface CtrlPos {
   left: number  // viewport-relative, left edge of block
 }
 
-/** The handle sits level with the block's first line, so on a tall block it is never far from the top. */
-function controlTop(rect: DOMRect): number {
+const TEXT_BLOCK = 'p, h1, h2, h3, h4, h5, h6, li, blockquote'
+
+/** Where the controls go for `el`: level with the first line of a text block, near the top of a tall one. */
+function controlTopFor(el: HTMLElement): number {
+  const rect = el.getBoundingClientRect()
+  if (el.matches(TEXT_BLOCK)) {
+    const style = getComputedStyle(el)
+    const lh = parseFloat(style.lineHeight)
+    const line = Number.isFinite(lh) ? lh : parseFloat(style.fontSize) * 1.5
+    return rect.top + (parseFloat(style.paddingTop) || 0) + line / 2
+  }
   return rect.top + Math.min(rect.height / 2, 24)
+}
+
+/** The controls stay in one column: at the left edge of the top-level block (a list item uses its list's edge). */
+function placeOf(editor: LexicalEditor, el: HTMLElement): CtrlPos {
+  const root = editor.getRootElement()
+  const edge = (root ? resolveBlockElement(root, el) : null) ?? el
+  return { top: controlTopFor(el), left: edge.getBoundingClientRect().left }
+}
+
+/** A list item that only holds a nested list: it belongs to the item before it, so it is never a block of its own. */
+function $isNestedWrapper(node: LexicalNode | null): boolean {
+  return !!node && $isListItemNode(node) && node.getChildrenSize() === 1 && $isListNode(node.getFirstChild())
+}
+
+/** The nodes that move, copy and go together: a list item and the nested list under it. */
+function $unitNodes(node: LexicalNode): LexicalNode[] {
+  if (!$isListItemNode(node)) return [node]
+  const next = node.getNextSibling()
+  return next && $isNestedWrapper(next) ? [node, next] : [node]
+}
+
+/** The block under the pointer: one list item inside a list, otherwise the top-level block. */
+function unitAt(editor: LexicalEditor, root: HTMLElement, target: EventTarget | null, y: number): { key: NodeKey; el: HTMLElement } | null {
+  const top = resolveBlockElement(root, target)
+  if (!top) return null
+  if (top.tagName === 'UL' || top.tagName === 'OL') {
+    let hit: HTMLElement | null = null
+    for (const li of Array.from(top.querySelectorAll<HTMLElement>('li'))) {
+      if (li.classList.contains('editor-listitem-nested')) continue
+      const r = li.getBoundingClientRect()
+      if (y >= r.top && y <= r.bottom) hit = li
+    }
+    if (!hit) return null
+    const el: HTMLElement = hit
+    let key: NodeKey | null = null
+    editor.read(() => {
+      const n = $getNearestNodeFromDOMNode(el)
+      if (n && $isListItemNode(n)) key = n.getKey()
+    })
+    return key ? { key, el } : null
+  }
+  let key: NodeKey | null = null
+  editor.getEditorState().read(() => {
+    for (const child of $getRoot().getChildren()) {
+      if (editor.getElementByKey(child.getKey()) === top) { key = child.getKey(); break }
+    }
+  })
+  return key ? { key, el: top } : null
 }
 
 export function BlockControlsPlugin() {
@@ -80,6 +139,8 @@ export function BlockControlsPlugin() {
   const selectedElemRef = useRef<HTMLElement | null>(null)
   const rootElRef = useRef<HTMLElement | null>(null)
   const suppressClickRef = useRef(false)
+  // The one empty line of a new document: its controls stay up (see the effect below).
+  const emptyDocKeyRef = useRef<NodeKey | null>(null)
 
   // blockSelection's selected key is a plain module-level singleton, living
   // outside React — so it survives this component unmounting. The editor
@@ -124,12 +185,57 @@ export function BlockControlsPlugin() {
   const scheduleHide = useCallback(() => {
     cancelHide()
     hideTimerRef.current = setTimeout(() => {
+      if (emptyDocKeyRef.current) return
       if (!menuOpenRef.current && !draggingRef.current) {
         setCtrlPos(null)
         nodeKeyRef.current = null
       }
     }, 500) // long enough to cross the gap between a block and its handle
   }, [cancelHide])
+
+  // While the document is just one empty line (a new document), the drag handle and "+" stay next to it,
+  // so a teacher who arrives for the first time sees how to add a block. Typing takes it back to hover.
+  useEffect(() => {
+    const sync = () => {
+      const key = editor.getEditorState().read((): NodeKey | null => {
+        const kids = $getRoot().getChildren()
+        const only = kids.length === 1 ? kids[0] : null
+        return editor.isEditable() && only && $isParagraphNode(only) && only.getTextContent() === '' ? only.getKey() : null
+      })
+      const was = emptyDocKeyRef.current
+      emptyDocKeyRef.current = key
+      if (!key) { if (was) scheduleHide(); return }
+      const el = editor.getElementByKey(key)
+      if (!el || draggingRef.current || menuOpenRef.current) return
+      cancelHide()
+      nodeKeyRef.current = key
+      const next = placeOf(editor, el)
+      setCtrlPos(prev => (prev && prev.top === next.top && prev.left === next.left ? prev : next))
+    }
+    sync()
+    const off = editor.registerUpdateListener(() => { requestAnimationFrame(sync) })
+    window.addEventListener('resize', sync)
+    // The first paint of a new document can land after this effect: look once more.
+    const t = setTimeout(sync, 300)
+    return () => { off(); window.removeEventListener('resize', sync); clearTimeout(t) }
+  }, [editor, cancelHide, scheduleHide])
+
+  // The controls are drawn at fixed screen positions, so when the page scrolls or the line changes height
+  // (the slash menu scrolling the caret into view, typing) they have to follow their block.
+  useEffect(() => {
+    const follow = () => {
+      const key = nodeKeyRef.current
+      if (!key || draggingRef.current) return
+      const el = editor.getElementByKey(key)
+      if (!el) return
+      const next = placeOf(editor, el)
+      setCtrlPos(prev => (prev && (prev.top !== next.top || prev.left !== next.left) ? next : prev))
+    }
+    window.addEventListener('scroll', follow, true)
+    window.addEventListener('resize', follow)
+    const off = editor.registerUpdateListener(() => { requestAnimationFrame(follow) })
+    return () => { window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow); off() }
+  }, [editor])
 
   useEffect(() => {
     const unregisterRootListener = editor.registerRootListener((root) => {
@@ -164,28 +270,20 @@ export function BlockControlsPlugin() {
           scheduleHide()
           return
         }
-
-        let foundKey: NodeKey | null = null
-        editor.getEditorState().read(() => {
-          for (const child of $getRoot().getChildren()) {
-            if (editor.getElementByKey(child.getKey()) === elem) {
-              foundKey = child.getKey()
-              break
-            }
-          }
-        })
-
-        if (!foundKey) {
-          scheduleHide()
+        // A /generate or /agent prompt line shows its own mode badge in this gutter.
+        if (elem.classList.contains('gl-line')) {
+          nodeKeyRef.current = null
+          setCtrlPos(null)
           return
         }
 
-        nodeKeyRef.current = foundKey
-        const rect = elem.getBoundingClientRect()
-        setCtrlPos({
-          top: controlTop(rect),
-          left: rect.left,
-        })
+        const unit = unitAt(editor, root!, e.target, e.clientY)
+        if (!unit) {
+          scheduleHide()
+          return
+        }
+        nodeKeyRef.current = unit.key
+        setCtrlPos(placeOf(editor, unit.el))
       }
 
       function onPointerLeave() {
@@ -223,24 +321,10 @@ export function BlockControlsPlugin() {
         // space below the last block hides them again.
         if (e.pointerType === 'touch') {
           cancelHide()
-          const elem = resolveHoveredBlock(e.target)
-          if (elem) {
-            let foundKey: NodeKey | null = null
-            editor.getEditorState().read(() => {
-              for (const child of $getRoot().getChildren()) {
-                if (editor.getElementByKey(child.getKey()) === elem) {
-                  foundKey = child.getKey()
-                  break
-                }
-              }
-            })
-            if (foundKey) {
-              nodeKeyRef.current = foundKey
-              const rect = elem.getBoundingClientRect()
-              setCtrlPos({ top: controlTop(rect), left: rect.left })
-            } else {
-              scheduleHide()
-            }
+          const unit = unitAt(editor, root!, e.target, e.clientY)
+          if (unit) {
+            nodeKeyRef.current = unit.key
+            setCtrlPos(placeOf(editor, unit.el))
           } else {
             scheduleHide()
           }
@@ -365,21 +449,28 @@ export function BlockControlsPlugin() {
       const node = $getNodeByKey(key)
       if (!node) return
 
+      // A list item moves, copies and goes together with the nested list under it.
+      const group = $unitNodes(node)
+      const last = group[group.length - 1]
       if (action === 'delete') {
-        node.remove()
+        group.forEach(n => n.remove())
         if (selectedKeyRef.current === key) deselectBlock()
       } else if (action === 'moveUp') {
-        const prev = node.getPreviousSibling()
-        if (prev) prev.insertBefore(node)
+        let prev = node.getPreviousSibling()
+        if ($isNestedWrapper(prev)) prev = prev!.getPreviousSibling()
+        if (prev) group.forEach(n => prev!.insertBefore(n))
       } else if (action === 'moveDown') {
-        const next = node.getNextSibling()
-        if (next) next.insertAfter(node)
+        const next = last.getNextSibling()
+        if (next) {
+          const after = $unitNodes(next)
+          const end = after[after.length - 1]
+          for (let i = group.length - 1; i >= 0; i--) end.insertAfter(group[i])
+        }
       } else if (action === 'duplicate') {
-        const clone = $isElementNode(node)
-          ? $deepCloneElement(node)
-          : $cloneNodeShallow(node)
-        node.insertAfter(clone)
-        if ($isElementNode(clone)) clone.selectEnd()
+        const clones = group.map(n => ($isElementNode(n) ? $deepCloneElement(n) : $cloneNodeShallow(n)))
+        for (let i = clones.length - 1; i >= 0; i--) last.insertAfter(clones[i])
+        const first = clones[0]
+        if ($isElementNode(first)) first.selectEnd()
       }
     })
 
@@ -392,16 +483,18 @@ export function BlockControlsPlugin() {
     editor.update(() => {
       const node = $getNodeByKey(key)
       if (!node) return
-      const para = $createParagraphNode()
-      node.insertAfter(para)
-      para.selectEnd()
+      // A list item adds another item to the same list, under any nested list it has; other blocks add a line.
+      const group = $unitNodes(node)
+      const fresh = $isListItemNode(node) ? $createListItemNode() : $createParagraphNode()
+      group[group.length - 1].insertAfter(fresh)
+      fresh.selectEnd()
     })
     setCtrlPos(null)
   }, [editor])
 
   // Moves one block, then lets every block that shifted glide to its new place (FLIP):
   // measure before, let Lexical update the DOM, measure after, and animate the difference.
-  const moveBlock = useCallback((draggedKey: NodeKey, target: { key: NodeKey; position: 'before' | 'after' }, keys: NodeKey[]) => {
+  const moveBlock = useCallback((movingKeys: NodeKey[], target: { key: NodeKey; position: 'before' | 'after' }, keys: NodeKey[]) => {
     // Moving a block must not scroll the page: Lexical would otherwise
     // scroll the old caret position back into view, which looked like the
     // whole screen jumping. Keep the scroll position exactly as it was.
@@ -418,13 +511,13 @@ export function BlockControlsPlugin() {
       }
     }
     editor.update(() => {
-      const draggedNode = $getNodeByKey(draggedKey)
+      const moving = movingKeys.map(k => $getNodeByKey(k)).filter((n): n is LexicalNode => !!n)
       const targetNode = $getNodeByKey(target.key)
-      if (!draggedNode || !targetNode) return
+      if (!moving.length || !targetNode) return
       if (target.position === 'before') {
-        targetNode.insertBefore(draggedNode)
+        moving.forEach(n => targetNode.insertBefore(n))
       } else {
-        targetNode.insertAfter(draggedNode)
+        for (let i = moving.length - 1; i >= 0; i--) targetNode.insertAfter(moving[i])
       }
     }, {
       tag: 'skip-scroll-into-view',
@@ -438,7 +531,7 @@ export function BlockControlsPlugin() {
             el.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' })
           }
         })
-        const dropped = editor.getElementByKey(draggedKey)
+        const dropped = editor.getElementByKey(movingKeys[0])
         if (dropped) {
           dropped.classList.add('block-dropped')
           setTimeout(() => dropped.classList.remove('block-dropped'), 900)
@@ -468,16 +561,27 @@ export function BlockControlsPlugin() {
     e.preventDefault()
     e.stopPropagation()
 
-    const blocks: { key: NodeKey; el: HTMLElement }[] = []
+    // What can be dropped between: the root's blocks, or, for a list item, the items of its own list
+    // (each with the nested list under it, which travels with it).
+    const blocks: { key: NodeKey; keys: NodeKey[]; els: HTMLElement[] }[] = []
     editor.getEditorState().read(() => {
-      for (const child of $getRoot().getChildren()) {
-        const el = editor.getElementByKey(child.getKey())
-        if (el) blocks.push({ key: child.getKey(), el })
+      const dragged = $getNodeByKey(key)
+      const scope = dragged && $isListItemNode(dragged) ? dragged.getParent() : $getRoot()
+      for (const child of scope ? scope.getChildren() : []) {
+        if ($isNestedWrapper(child)) continue
+        const nodes = $unitNodes(child)
+        const els = nodes.map(n => editor.getElementByKey(n.getKey())).filter((el): el is HTMLElement => !!el)
+        if (els.length) blocks.push({ key: child.getKey(), keys: nodes.map(n => n.getKey()), els })
       }
     })
     const draggedKey: NodeKey = key
     const from = blocks.findIndex(b => b.key === draggedKey)
     if (from < 0) return
+    // One box for the block and everything that goes with it.
+    const rectOf = (b: { els: HTMLElement[] }) => {
+      const rs = b.els.map(el => el.getBoundingClientRect())
+      return { top: rs[0].top, bottom: rs[rs.length - 1].bottom, left: rs[0].left, width: rs[0].width }
+    }
 
     const handle = e.currentTarget
     handle.setPointerCapture(e.pointerId)
@@ -500,7 +604,7 @@ export function BlockControlsPlugin() {
         const dy = edgeScrollSpeed(y, area.top, area.bottom)
         if (dy) scroller.scrollTop += dy
       }
-      const rects = blocks.map(b => b.el.getBoundingClientRect())
+      const rects = blocks.map(rectOf)
       const slot = dropSlot(rects, y)
       const line = lineRef.current
       if (line) {
@@ -509,7 +613,7 @@ export function BlockControlsPlugin() {
         } else {
           const ref = rects[Math.min(slot, rects.length - 1)]
           line.style.width = `${ref.width}px`
-          line.style.transform = `translate3d(${ref.left}px, ${slotLineY(rects, slot) - 1.5}px, 0)`
+          line.style.transform = `translate3d(${ref.left}px, ${slotLineY(rects, slot) - 0.5}px, 0)`
           line.classList.add('on')
         }
       }
@@ -520,9 +624,9 @@ export function BlockControlsPlugin() {
 
     function startDrag() {
       moved = true
-      blocks[from].el.classList.add('block-dragging')
+      blocks[from].els.forEach(el => el.classList.add('block-dragging'))
       document.body.classList.add('is-block-dragging')
-      setGhostLabel(dragLabel(blocks[from].el.textContent ?? ''))
+      setGhostLabel(dragLabel(blocks[from].els[0].textContent ?? ''))
       setDragging(true)
       frame = requestAnimationFrame(tick)
     }
@@ -537,22 +641,23 @@ export function BlockControlsPlugin() {
       handle.removeEventListener('pointerup', end)
       handle.removeEventListener('pointercancel', cancelDrag)
       window.removeEventListener('keydown', onKey)
-      blocks[from].el.classList.remove('block-dragging')
+      blocks[from].els.forEach(el => el.classList.remove('block-dragging'))
       document.body.classList.remove('is-block-dragging')
       draggingRef.current = false
       setDragging(false)
     }
     function end() {
       // Measured again here, not taken from the last frame, so a quick release is exact.
-      const slot = dropSlot(blocks.map(b => b.el.getBoundingClientRect()), y)
+      const slot = dropSlot(blocks.map(rectOf), y)
       cleanup()
       if (!moved) return
       // The click event that follows this pointerup would otherwise toggle
       // the actions menu open right after a real drag.
       suppressClickRef.current = true
       if (isNoopSlot(slot, from)) return
-      const keys = blocks.map(b => b.key)
-      moveBlock(draggedKey, slot < blocks.length ? { key: blocks[slot].key, position: 'before' } : { key: blocks[blocks.length - 1].key, position: 'after' }, keys)
+      const keys = blocks.flatMap(b => b.keys)
+      const lastKeys = blocks[blocks.length - 1].keys
+      moveBlock(blocks[from].keys, slot < blocks.length ? { key: blocks[slot].key, position: 'before' } : { key: lastKeys[lastKeys.length - 1], position: 'after' }, keys)
     }
     function cancelDrag() {
       cleanup() // pointercancel: the browser took the gesture over, and no click follows

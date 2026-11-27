@@ -114,16 +114,10 @@ export function LeftSidebar({ isOpen }: LeftSidebarProps) {
                     ))}
                   </div>
                   {/* The open document's outline sits right under it. */}
-                  {isActive && (
+                  {isActive && (filteredOutline.length > 0 || query) && (
                     <div className="lsb-doc-outline">
                       {filteredOutline.length === 0 ? (
-                        query ? (
-                          <p className="lsb-empty-search">No headings match "{query}"</p>
-                        ) : (
-                          <p className="lsb-outline-empty-text">
-                            Add headings to your document to build an outline
-                          </p>
-                        )
+                        <p className="lsb-empty-search">No headings match "{query}"</p>
                       ) : (
                         <OutlineNav items={filteredOutline} />
                       )}

@@ -15,6 +15,7 @@ import {
   $isTextNode,
 } from 'lexical'
 import type { LexicalEditor } from 'lexical'
+import { BlockIcon } from './blockIcons'
 
 import {
   BLOCK_REGISTRY,
@@ -100,6 +101,29 @@ function KeepSelectedVisible({ menuRef, selectedIndex, skipRef }: { menuRef: { c
   return null
 }
 
+// Lexical places the menu once per query, with the height the list has at that moment. The list
+// is filtered a moment later (SEARCH_DEBOUNCE_MS) and changes height, which left a short menu
+// floating far above the caret (it had flipped above while it was still tall), or a tall one running
+// off the bottom. Lexical places it again on a window resize, so ask for that whenever the menu
+// changes height.
+function PlaceAgainWhenResized({ menuRef }: { menuRef: { current: HTMLDivElement | null } }) {
+  useEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+    let height = el.offsetHeight
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      if (el.offsetHeight === height) return
+      height = el.offsetHeight
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
+    })
+    observer.observe(el)
+    return () => { cancelAnimationFrame(frame); observer.disconnect() }
+  }, [menuRef])
+  return null
+}
+
 class SlashOption extends MenuOption {
   block: BlockDef
   constructor(block: BlockDef) {
@@ -150,6 +174,9 @@ export function SlashCommandPlugin() {
       setGhost(host && rect.height ? { x: rect.right + 4, y: rect.top, h: rect.height, font: getComputedStyle(host).fontSize } : null)
     }
     measure()
+    // The browser's own selection can lag one frame behind the editor: measure again after it settles,
+    // so the hint is there every time, not only when the timing happened to be right.
+    let raf = requestAnimationFrame(() => { measure(); raf = requestAnimationFrame(measure) })
     // The ghost must vanish as soon as the "/" is gone (block inserted, menu
     // dismissed, caret moved) — the query alone stays '' in those cases.
     const unregister = editor.registerUpdateListener(({ editorState }) => {
@@ -160,10 +187,12 @@ export function SlashCommandPlugin() {
         return $isTextNode(n) && n.getTextContent().slice(sel.anchor.offset - 1, sel.anchor.offset) === '/'
       })
       if (!stillLoneSlash) setGhost(null)
+      else { cancelAnimationFrame(raf); raf = requestAnimationFrame(measure) }
     })
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
     return () => {
+      cancelAnimationFrame(raf)
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
       unregister()
@@ -220,12 +249,14 @@ export function SlashCommandPlugin() {
   // order can't just filter the registry in place.
   const allMatchingBlocks = useMemo(() => {
     const q = searchQuery?.trim() ?? ''
-    if (q) return searchBlocks(BLOCK_REGISTRY.filter(b => b.inSlash), q)
-    return CATEGORY_ORDER.flatMap(cat => BLOCK_REGISTRY.filter(b => b.category === cat && b.inSlash))
+    // Blocks that are not ready yet ("coming soon") are not listed at all.
+    const usable = BLOCK_REGISTRY.filter(b => b.inSlash && b.status === 'available')
+    if (q) return searchBlocks(usable, q)
+    return CATEGORY_ORDER.flatMap(cat => usable.filter(b => b.category === cat))
   }, [searchQuery])
 
   const options = useMemo(
-    () => allMatchingBlocks.filter(b => b.status === 'available').map(b => new SlashOption(b)),
+    () => allMatchingBlocks.map(b => new SlashOption(b)),
     [allMatchingBlocks],
   )
 
@@ -353,13 +384,14 @@ export function SlashCommandPlugin() {
             select={setHighlightedIndex}
           />
           <KeepSelectedVisible menuRef={menuElRef} selectedIndex={selectedIndex} skipRef={pointerSelectRef} />
+          <PlaceAgainWhenResized menuRef={menuElRef} />
           <div className="slash-menu" ref={menuElRef}>
             {groups.map(group => (
               <div key={group.cat}>
                 <div className="slash-menu-section">{group.label}</div>
                 <ul className="slash-menu-list">
                   {group.blocks.map(block => {
-                    if (block.status === 'available') {
+                    {
                       const myIdx = availableIdx++
                       const isSelected = myIdx === selectedIndex
                       return (
@@ -377,7 +409,7 @@ export function SlashCommandPlugin() {
                             if (opt) selectOptionAndCleanUp(opt)
                           }}
                         >
-                          <span className="slash-menu-icon">{block.icon}</span>
+                          <span className="slash-menu-icon"><BlockIcon blockKey={block.key} /></span>
                           <span className="slash-menu-text">
                             <span className="slash-menu-title">{block.label}</span>
                             <span className="slash-menu-description">{block.description}</span>
@@ -385,18 +417,6 @@ export function SlashCommandPlugin() {
                         </li>
                       )
                     }
-
-                    // Coming-soon: visible but not selectable
-                    return (
-                      <li key={block.key} className="slash-menu-item slash-menu-item-soon">
-                        <span className="slash-menu-icon">{block.icon}</span>
-                        <span className="slash-menu-text">
-                          <span className="slash-menu-title">{block.label}</span>
-                          <span className="slash-menu-description">{block.description}</span>
-                        </span>
-                        <span className="slash-menu-badge-soon">Soon</span>
-                      </li>
-                    )
                   })}
                 </ul>
               </div>

@@ -7,6 +7,7 @@ import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin'
 import { SlashCommandPlugin } from './SlashCommandPlugin'
 import { GenerateLinePlugin } from './plugins/GenerateLinePlugin'
+import { EmptyLineHintPlugin } from './plugins/EmptyLineHintPlugin'
 import { MatrixPickerPlugin, MatrixControlsPlugin } from './nodes/matrix'
 import { DataTablePickerPlugin } from './nodes/datatable'
 import { InitStreamPlugin } from './plugins/InitStreamPlugin'
@@ -49,7 +50,7 @@ export function EditorArea() {
             }
             placeholder={
               <div className="editor-placeholder">
-                Start writing, or type "/" to insert a block…
+                Type "/" to insert, or start writing…
               </div>
             }
             ErrorBoundary={BlockErrorBoundary}
@@ -58,6 +59,7 @@ export function EditorArea() {
           {/* Core plugins */}
           <HistoryPlugin />
           <TrailingParagraphPlugin />
+          <EmptyLineHintPlugin />
           <SectionCardsPlugin />
           <ListPlugin />
           <HorizontalRulePlugin />
