@@ -270,7 +270,7 @@
 /* The frame (ResizeFrame) sets the height; the view fills it. */
 .mm-view-fixed { height: 100%; overflow: hidden; justify-content: center; }
 .mm-view-fill { height: 100%; overflow: hidden; justify-content: center; box-sizing: border-box; }
-.mm-view-fixed .mm-svg { overflow: hidden; }
+.mm-view-fixed .mm-svg, .mm-view-fill .mm-svg, .rz-dragging .mm-svg { overflow: hidden; }
 .mm-svg { max-width: 100%; overflow-x: auto; }
 .mm-svg svg { max-width: 100%; height: auto; }
 .mm-empty { color: var(--c-text-3); font-size: 13px; padding: 20px 0; }

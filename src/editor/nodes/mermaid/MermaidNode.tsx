@@ -77,10 +77,12 @@ function useFitDiagram(
 ) {
   useLayoutEffect(() => {
     const box = boxRef.current
-    const svgEl = box?.querySelector('svg')
-    if (!box || !svgEl) return
+    if (!box || !box.querySelector('svg')) return
 
     const fit = () => {
+      // Looked up each time: React can replace the drawing's element, and a stale one would be fitted instead.
+      const svgEl = box.querySelector('svg')
+      if (!svgEl) return
       svgEl.style.width = ''
       svgEl.style.height = ''
       const vb = (svgEl as SVGSVGElement).viewBox?.baseVal
@@ -91,19 +93,31 @@ function useFitDiagram(
       const pad = 28 // .mm-view's 14px padding, both sides
       // Resizing the box has to resize the drawing, wider or narrower. Until the box has been
       // sized by hand the drawing keeps its natural size (never blown up to fill the default box).
-      const resizing = !!box.closest('.rz-frame.rz-dragging')
+      const frame = box.closest<HTMLElement>('.rz-frame')
+      const resizing = !!frame?.classList.contains('rz-dragging')
       const cap = fixedHeight || userSized || resizing ? Infinity : 1
       const byWidth = (box.clientWidth - pad) / vbW
-      const byHeight = fixedHeight ? (box.clientHeight - pad) / vbH : Infinity
+      // While a handle is dragged the frame already has its new height, but the drawing's box has
+      // not caught up: fit to the frame, or the drawing outgrows it and shrinks again on release.
+      const boxH = resizing && frame ? frame.clientHeight : box.clientHeight
+      const byHeight = fixedHeight || resizing ? (boxH - pad) / vbH : Infinity
       const scale = Math.min(byWidth, byHeight, cap)
       if (!Number.isFinite(scale) || scale <= 0) return
+      // Mermaid writes `max-width: <natural size>` on the drawing; left there it stops it growing
+      // while the height still does, so a bigger box shows a smaller, letterboxed chart.
+      svgEl.style.maxWidth = 'none'
       svgEl.style.width = `${vbW * scale}px`
       svgEl.style.height = `${vbH * scale}px`
     }
     fit()
     const ro = new ResizeObserver(fit)
     ro.observe(box)
-    return () => ro.disconnect()
+    const frame = box.closest('.rz-frame')
+    if (frame) ro.observe(frame)
+    // React may swap the drawing's element for a fresh one after a resize is saved: fit that one too.
+    const mo = new MutationObserver(fit)
+    mo.observe(box, { childList: true, subtree: true })
+    return () => { ro.disconnect(); mo.disconnect() }
   }, [boxRef, svg, fixedHeight, userSized])
 }
 
@@ -155,6 +169,8 @@ function MermaidComponent({ nodeKey, code, width, height, align }: { nodeKey: No
 
   const { svg, error, busy } = useDiagram(liveCode, near || editing)
   const boxRef = useRef<HTMLDivElement>(null)
+  // Height of the drawing when it was clicked: editing starts at that size instead of jumping to a default.
+  const [openHeight, setOpenHeight] = useState<number | null>(null)
   // The diagram always scales to its box (see useFitDiagram), so dragging a handle resizes the drawing too.
   useFitDiagram(boxRef, svg, editing || data.height != null, data.width !== DEFAULT_WIDTH)
 
@@ -185,7 +201,7 @@ function MermaidComponent({ nodeKey, code, width, height, align }: { nodeKey: No
           default height, so typing never changes it). */}
       <ResizeFrame
         width={data.width}
-        height={editing ? (data.height ?? DEFAULT_EDIT_HEIGHT) : (data.height ?? undefined)}
+        height={editing ? (data.height ?? openHeight ?? DEFAULT_EDIT_HEIGHT) : (data.height ?? undefined)}
         min={240}
         max={1200}
         minHeight={160}
@@ -198,7 +214,7 @@ function MermaidComponent({ nodeKey, code, width, height, align }: { nodeKey: No
         <div
           className={`mm-view${editing ? ' mm-view-fixed' : ''}${data.height != null ? ' mm-view-fill' : ''}`}
           ref={boxRef}
-          onClick={editing ? undefined : () => setEditing(true)}
+          onClick={editing ? undefined : () => { setOpenHeight(boxRef.current?.offsetHeight ?? null); setEditing(true) }}
           title={editing ? undefined : 'Click to edit'}
         >
           {diagram}
