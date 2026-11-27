@@ -7,7 +7,7 @@
 // the resize corners are hidden (see preview.css).
 import { ReadOnlyContext } from '../editor/nodes/_shared/readOnlyContext'
 
-import { Component, useCallback, useEffect, useRef } from 'react'
+import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { PREPARE_PRINT_EVENT } from '../editor/nodes/model3d/Model3DViewer'
@@ -23,6 +23,14 @@ import type { LexicalEditor } from 'lexical'
 import { editorConfig } from '../editor/EditorConfig'
 import { CodeHighlightPlugin } from '../editor/plugins/CodeHighlightPlugin'
 import { SectionCardsPlugin } from '../editor/plugins/SectionCardsPlugin'
+import { ReadAloudPlayer } from './ReadAloudControl'
+
+/** Hands the preview's own editor to the player in the bar above (it lives outside the composer). */
+function EditorBridge({ onEditor }: { onEditor: (e: LexicalEditor) => void }) {
+  const [editor] = useLexicalComposerContext()
+  useEffect(() => { onEditor(editor) }, [editor, onEditor])
+  return null
+}
 
 /** Copies the live document's current state into this preview's own editor, once. */
 function PreviewSync({ sourceEditor }: { sourceEditor: LexicalEditor }) {
@@ -90,6 +98,9 @@ export function PreviewModal({
    * and close this overlay on its own once that dialog is dismissed. */
   autoPrint?: boolean
 }) {
+  const [previewEditor, setPreviewEditor] = useState<LexicalEditor | null>(null)
+  // Closing the preview always silences the reader, however it was closed.
+  useEffect(() => () => { if ('speechSynthesis' in window) window.speechSynthesis.cancel() }, [])
   useEffect(() => {
     if (autoPrint) return // off-screen and auto-closing — nothing for Escape to close, nothing to scroll-lock behind
     function onKeyDown(e: KeyboardEvent) {
@@ -153,6 +164,7 @@ export function PreviewModal({
         <div className="preview-overlay-bar">
           <span className="preview-overlay-badge">Preview</span>
           <span className="preview-overlay-title">{title || 'Untitled'}</span>
+          <ReadAloudPlayer editor={previewEditor} />
           <button type="button" className="preview-overlay-close" onClick={onClose}>
             Close
           </button>
@@ -175,6 +187,7 @@ export function PreviewModal({
               <CodeHighlightPlugin />
               <SectionCardsPlugin />
               <PreviewSync sourceEditor={sourceEditor} />
+              <EditorBridge onEditor={setPreviewEditor} />
             </LexicalComposer>
             </ReadOnlyContext.Provider>
           </PreviewErrorBoundary>
