@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.ai_blocks import parse_block_line, sanitize_block
+from app.services.block_parser import parse_block_line, sanitize_block
 
 from .test_api import client  # noqa: F401  (fixture)
 
@@ -65,7 +65,7 @@ def test_generate_rejects_bad_input(client, monkeypatch):  # noqa: F811
 
 
 def test_generate_streams_blocks_from_the_model(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
@@ -86,7 +86,7 @@ def test_generate_streams_blocks_from_the_model(client, monkeypatch):  # noqa: F
 
 
 def test_generate_reports_a_model_failure_without_leaking_details(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "super-secret-key")
 
@@ -101,7 +101,7 @@ def test_generate_reports_a_model_failure_without_leaking_details(client, monkey
 
 
 def test_generate_with_no_usable_output_is_an_error(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setattr(ai_router, "text_stream", fake_model("sorry, I cannot do that"))
@@ -160,7 +160,7 @@ def test_sanitize_quote_divider_and_code():
 
 def test_chart_and_flowchart_blocks_are_cleaned():
     # Both are now plain Mermaid text, cleaned the same way.
-    from app.ai_blocks import sanitize_block
+    from app.services.block_parser import sanitize_block
     chart = sanitize_block({"type": "chart", "code": '```mermaid\npie title T\n  "a" : 1\n  "b" : 2\n```'})
     assert chart == {"type": "chart", "code": 'pie title T\n  "a" : 1\n  "b" : 2'}
     assert sanitize_block({"type": "chart", "code": "pie title T\n  <script>alert(1)</script>"}) is None
@@ -172,7 +172,7 @@ def test_chart_and_flowchart_blocks_are_cleaned():
 
 
 def test_off_topic_visuals_are_dropped_but_on_topic_ones_stay():
-    from app.relevance import block_text, is_relevant
+    from app.services.relevance import block_text, is_relevant
     acids = "Acids, bases and salts. Class 10 chemistry lesson on pH"
     assert not is_relevant("circuit", acids)      # no circuits in a chemistry lesson
     assert not is_relevant("geometry", acids)
@@ -193,7 +193,7 @@ def test_keep_block_is_only_a_valid_reference():
 
 
 def test_edit_needs_an_instruction_but_context_is_optional(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setattr(ai_router, "text_stream", fake_model('{"type":"paragraph","text":"New."}\n'))
@@ -207,7 +207,7 @@ def test_edit_needs_an_instruction_but_context_is_optional(client, monkeypatch):
 
 
 def test_edit_streams_keep_and_changed_blocks(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     seen = {}
 
@@ -261,7 +261,7 @@ def test_section_toc_tabs_and_quiz_blocks_are_cleaned():
 
 
 def test_generate_types_a_section_heading_like_a_heading(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
@@ -278,7 +278,7 @@ GOOD_HTML = "<!doctype html><html><body><button onclick=\"document.title='x'\">G
 
 
 def test_clean_html_keeps_self_contained_pages_and_turns_away_network_code():
-    from app.ai_blocks import clean_html
+    from app.services.block_parser import clean_html
 
     assert clean_html("```html\n" + GOOD_HTML + "\n```") == GOOD_HTML
     for bad in ("", "   ", "no tags at all", None, 5,
@@ -289,7 +289,7 @@ def test_clean_html_keeps_self_contained_pages_and_turns_away_network_code():
 
 
 def test_html_block_returns_the_widget_or_a_clear_error(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     seen = {}
@@ -311,7 +311,7 @@ def test_html_block_returns_the_widget_or_a_clear_error(client, monkeypatch):  #
 
 
 def test_html_block_in_a_document_only_when_interactive_was_asked(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     line = json.dumps({"type": "html", "title": "Sim", "code": GOOD_HTML}) + "\n"
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -354,7 +354,7 @@ SOURCE = {"name": "Acids_Ch4.pdf", "text": "[page 2]\nAcids taste sour and turn 
 
 
 def test_sources_reach_the_model_with_the_write_only_from_them_rule(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     seen = []
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -369,7 +369,7 @@ def test_sources_reach_the_model_with_the_write_only_from_them_rule(client, monk
 
 
 def test_without_sources_the_rule_is_not_added(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     seen = []
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -388,7 +388,7 @@ def test_sources_are_limited_in_number_and_total_size(client, monkeypatch):  # n
 
 
 def test_a_source_cannot_fake_the_end_marker_or_break_the_name_line(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     seen = []
     monkeypatch.setenv("GEMINI_API_KEY", "x")
@@ -402,7 +402,7 @@ def test_a_source_cannot_fake_the_end_marker_or_break_the_name_line(client, monk
 
 
 def test_a_3d_model_is_added_when_asked_or_when_the_topic_needs_it(client, monkeypatch):  # noqa: F811
-    import app.ai_service as ai_router
+    import app.services.llm as ai_router
 
     page = "<!doctype html><div id='s3d'></div><script>const S = T3.stage('#s3d')</script>"
 
@@ -427,7 +427,7 @@ def test_a_3d_model_is_added_when_asked_or_when_the_topic_needs_it(client, monke
 
 
 def test_documents_route_streams_a_document_and_refuses_edit(client, monkeypatch):  # noqa: F811
-    import app.ai_service as svc
+    import app.services.llm as svc
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setenv("AI_TYPING_DELAY_MS", "0")
@@ -440,7 +440,7 @@ def test_documents_route_streams_a_document_and_refuses_edit(client, monkeypatch
 
 
 def test_blocks_route_returns_one_block_of_the_asked_type(client, monkeypatch):  # noqa: F811
-    import app.ai_service as svc
+    import app.services.llm as svc
 
     seen = {}
 
@@ -458,7 +458,7 @@ def test_blocks_route_returns_one_block_of_the_asked_type(client, monkeypatch): 
 
 
 def test_blocks_route_uses_the_hint_and_rejects_unknown_types_and_empty_answers(client, monkeypatch):  # noqa: F811
-    import app.ai_service as svc
+    import app.services.llm as svc
 
     seen = {}
 
@@ -475,7 +475,7 @@ def test_blocks_route_uses_the_hint_and_rejects_unknown_types_and_empty_answers(
 
 
 def test_blocks_route_html_uses_the_widget_pass(client, monkeypatch):  # noqa: F811
-    import app.ai_service as svc
+    import app.services.llm as svc
 
     monkeypatch.setenv("GEMINI_API_KEY", "x")
     monkeypatch.setattr(svc, "text_stream", fake_model("<!doctype html><p>poll</p>"))
@@ -491,7 +491,7 @@ def test_blocks_and_chat_without_a_key_are_503(client, monkeypatch):  # noqa: F8
 
 
 def test_chat_sends_the_conversation_so_far_to_the_model(client, monkeypatch):  # noqa: F811
-    import app.ai_service as svc
+    import app.services.llm as svc
 
     seen = {}
 
@@ -529,7 +529,7 @@ def test_chat_messages_are_appended_not_replaced(client):  # noqa: F811
 
 
 def test_chat_history_keeps_only_the_newest_messages(client):  # noqa: F811
-    from app.routers.documents import MAX_CHAT_MESSAGES
+    from app.services.chat_store import MAX_CHAT_MESSAGES
 
     doc = client.post("/documents", json={"title": "Long chat"}).json()
     url = f"/documents/{doc['id']}/ai-chat/messages"

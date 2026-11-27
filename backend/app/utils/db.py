@@ -3,7 +3,7 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("NOTEBOOK_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
+DATA_DIR = Path(os.environ.get("NOTEBOOK_DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
 DB_PATH = DATA_DIR / "notebook.db"
 
 # Single-user stub, same placeholder the frontend's Dexie records use. Real

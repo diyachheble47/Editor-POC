@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("NOTEBOOK_DATA_DIR", str(tmp_path))
-    import app.db as db
+    import app.utils.db as db
     import app.routers.ai as ai_router
     import app.routers.documents as documents_router
     import app.main as main

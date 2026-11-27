@@ -16,13 +16,34 @@ Interactive API docs: http://localhost:8000/docs
 
 ## Layout
 
-- `app/main.py` — app, CORS for the Vite dev server
-- `app/db.py` — SQLite schema and connection (`data/notebook.db`)
-- `app/routers/documents.py` — documents, the autosave endpoint, the AI chat history
-- `app/routers/ai.py` — the AI routes (request checks only)
-- `app/ai_service.py` — the AI work: documents, single blocks, chat edits, widgets and 3D
-- `app/ai_prompts.py`, `app/ai_blocks.py` — the prompts, and the checking of what the model returns
-- `data/` — created at runtime, gitignored
+    app/
+      main.py            the app, CORS, and the routers it mounts
+      routers/           every route; each only checks the request and calls a service
+        ai.py              /ai/documents, /ai/generate, /ai/chat, /ai/status
+        documents.py       /documents ..., autosave, replay, the saved AI chat
+        export.py          /export/pdf
+      services/          the work, as plain functions
+        document_store.py    documents and their editor state (the database side)
+        chat_store.py        the AI chat saved with a document
+        document_generation.py  a whole document, or an edit of one, as a stream
+        block_generation.py     one block of a chosen type
+        widget_generation.py    interactive pages and 3D, and the "does this need 3D" check
+        block_parser.py      reads and cleans what the model returns
+        relevance.py         drops visuals a topic never mentions
+        llm.py, gemini.py    talking to the model (tests swap llm.text_stream for a fake)
+        pdf_export.py        HTML to PDF
+      prompts/           every prompt sent to the model
+        blocks.py            the block format
+        documents.py         workbook, lesson, lesson plan
+        edit.py              changing a document, adding one block
+        widgets.py           interactive pages, 3D, the 3D check
+        examples/            the worked 3D scenes shown to the model
+      utils/             the rest
+        db.py                SQLite schema and connection (data/notebook.db)
+        schemas.py           the request and response models
+        sse.py               one Server-Sent Events frame
+        export_assets/       print.css for the PDF
+    data/                created at runtime, gitignored
 
 ## API
 

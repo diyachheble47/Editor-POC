@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.routers.export import _allowed
+from app.services.pdf_export import _allowed
 
 client = TestClient(app)
 
