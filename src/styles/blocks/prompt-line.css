@@ -6,7 +6,9 @@
   position: fixed; z-index: 9990; width: min(460px, calc(100vw - 16px));
   background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 12px;
   box-shadow: var(--shadow-lg); padding: 10px 12px 9px; display: flex; flex-direction: column; gap: 8px;
+  animation: gl-drop .22s .08s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
+@keyframes gl-drop { from { opacity: 0; transform: translateY(-8px); } }
 .gl-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text-3); }
 .gl-chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 150px; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
 .gl-chip {
@@ -16,7 +18,49 @@
 .gl-chip:hover, .gl-chip.on { background: var(--c-accent-bg); border-color: var(--c-accent); color: var(--c-accent-text); }
 .gl-chip.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent); }
 .gl-chip.more { border-style: dashed; color: var(--c-accent-text); font-weight: 600; }
-.gl-keys { font-size: 12px; color: var(--c-text-3); }
+.gl-menu { display: flex; flex-direction: column; gap: 2px; max-height: 232px; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; }
+.gl-opt {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left;
+  border: 0; background: transparent; color: var(--c-text); border-radius: 8px; padding: 7px 10px; font: inherit; cursor: pointer;
+}
+.gl-opt-icon { display: flex; align-items: center; height: calc(14px * 1.3); margin-top: 4px; width: 18px; flex-shrink: 0; justify-content: center; color: var(--c-text-2); }
+.gl-opt.on .gl-opt-icon { color: inherit; }
+.gl-opt-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+.gl-opt-name { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.gl-opt-desc { font-size: 12px; color: var(--c-text-3); }
+.gl-opt.file .gl-opt-name { font-weight: 500; color: var(--c-text-3); }
+.gl-opt.file .gl-opt-desc { opacity: .75; }
+.gl-opt.file.on .gl-opt-name { color: var(--c-accent-text); }
+.gl-opt.on { background: var(--c-accent-bg); color: var(--c-accent-text); }
+.gl-opt.on .gl-opt-desc { color: var(--c-accent-text); opacity: .8; }
+/* Mode badge: an icon in the gutter, left of the prompt line, where the drag handle would be */
+/* The typed "/agent" or "/generate": its letters turn see-through (the slash is not shown) and a chip sits on them. */
+::highlight(gl-cmd) { color: transparent; }
+.gl-cmd-chip {
+  position: fixed; z-index: 9990; transform: translateY(-50%); pointer-events: none; white-space: nowrap;
+  line-height: 1; font-weight: 600; text-transform: capitalize; color: var(--c-accent); animation: gl-chip-in .28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* The star sits just left of the word, in the gutter. */
+.gl-cmd-icon { position: absolute; right: 100%; top: 50%; transform: translateY(-50%); margin-right: 5px; }
+@keyframes gl-chip-in { from { opacity: 0; transform: translate(var(--shift, 0), -50%); } }
+.gl-tpl { position: fixed; z-index: 9992; display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--c-text-3); }
+.gl-tpl-field {
+  /* A blank to write on: just a line under the text, no box. */
+  font: inherit; color: var(--c-text); background: transparent; border: 0; border-bottom: 1.5px solid var(--c-border);
+  border-radius: 0; padding: 0 2px; height: 1.5em; outline: none; min-width: 0; box-sizing: content-box;
+  transition: border-color .15s ease;
+}
+.gl-tpl-field::placeholder { color: var(--c-text-placeholder); }
+.gl-tpl-field:focus { border-bottom-color: var(--c-accent); }
+.gl-tpl-extra { border-bottom-style: dashed; }
+.gl-tpl-enter {
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--c-text-2);
+}
+.gl-tpl-enter:hover { color: var(--c-text); }
+.gl-keys { font-size: 12px; color: var(--c-text-3); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gl-style { border: 0; background: none; font: inherit; color: var(--c-text-3); cursor: pointer; padding: 0 2px; white-space: nowrap; }
+.gl-style:hover { color: var(--c-text); }
 .gl-keys kbd { font: inherit; font-size: 11px; padding: 0 5px; margin-right: 2px; border: 1px solid var(--c-border); border-radius: 4px; background: var(--c-surface-hover); }
 .gl-note { font-size: 13px; color: var(--c-text-2); }
 .gl-ghost-count { font-size: 0.8em; opacity: 0.8; }
@@ -52,4 +96,7 @@
 .gl-btn:hover { background: var(--c-surface-hover); }
 .gl-btn.primary { background: var(--c-accent); border-color: var(--c-accent); color: #fff; font-weight: 600; }
 .gl-btn.primary:hover { filter: brightness(1.08); }
-@media (prefers-reduced-motion: reduce) { .gl-busy-dot, .gl-flash, .gl-pending, .gl-accepted { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .gl-cmd-chip, .gl-panel, .gl-busy-dot, .gl-flash, .gl-pending, .gl-accepted { animation: none; } }
+
+/* The value in a grey suggestion that Tab leaves selected for editing (the class). */
+.gl-ghost-blank { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }

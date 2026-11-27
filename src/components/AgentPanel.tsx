@@ -6,8 +6,8 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { ListPlugin } from '@lexical/react/LexicalListPlugin'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
-import { $createParagraphNode, $createTextNode, $getNodeByKey, $getRoot, $parseSerializedNode } from 'lexical'
-import type { LexicalEditor, SerializedLexicalNode } from 'lexical'
+import { $createParagraphNode, $createTextNode, $getNodeByKey, $getRoot, $isParagraphNode, $parseSerializedNode } from 'lexical'
+import type { LexicalEditor, LexicalNode, SerializedLexicalNode } from 'lexical'
 import { useDocument } from '../context/DocumentContext'
 import { useEditorUI } from '../editor/context/EditorUIContext'
 import type { AgentSession } from '../editor/context/EditorUIContext'
@@ -60,7 +60,7 @@ const STATUS_TEXT: Record<NonNullable<AiChatMessage['status']>, string> = {
 
 type Phase = 'idle' | 'generating' | 'review'
 /** What Accept does with the preview: add it to the end, or replace the whole document (edit). */
-type Pending = { how: 'append' | 'replace'; msgId: string; snapshot: string; /** Edit of a selection: only these blocks are replaced. */ keys?: string[] }
+type Pending = { how: 'append' | 'replace'; msgId: string; snapshot: string; /** Where an /agent result goes: right after this block (the end of the document if it is gone). */ anchorKey?: string; /** Edit of a selection: only these blocks are replaced. */ keys?: string[] }
 
 const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
 
@@ -209,7 +209,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   // (confirmed live: it silently drops every block after the cut) loses
   // whatever the model hadn't gotten to yet, which is worse than the
   // problem this is fixing.
-  const send = useCallback(async (kind: AiKind, rawPrompt: string, allowEmptyEdit = false, singleBlock = false, sources?: { name: string; text: string }[]) => {
+  const send = useCallback(async (kind: AiKind, rawPrompt: string, allowEmptyEdit = false, singleBlock = false, sources?: { name: string; text: string }[], anchorKey?: string) => {
     const prompt = rawPrompt.trim()
     if (!prompt || abortRef.current) return
     const empty = isDocEmpty(mainEditor)
@@ -234,7 +234,10 @@ export function AgentPanel({ session }: { session: AgentSession }) {
       return
     }
 
-    const direct = empty && !edit // write straight into the (empty) document
+    // An empty document has nothing to edit or to keep, so whatever is asked for is written straight
+    // into it, with no preview to accept. (Asking from the panel is always an "edit" request, which
+    // has an edit context even when the document is empty: that is not a reason to go through a preview.)
+    const direct = empty && !scoped
     const target = direct ? mainEditor : previewRef.current
     if (!target) return
 
@@ -305,6 +308,14 @@ export function AgentPanel({ session }: { session: AgentSession }) {
       aiAbortRef.current = null
       builder.finish()
       mainEditor.setEditable(true)
+      // Nothing came back (an error, or stopped at once): leave the document empty, not with just the label.
+      if (blocksRef.current === 0) {
+        mainEditor.update(() => {
+          const root = $getRoot()
+          root.clear()
+          root.append($createParagraphNode())
+        }, { discrete: true, tag: 'skip-scroll-into-view' })
+      }
       if (blocksRef.current > 0) {
         markDirty()
         if (!docTitle.trim() || docTitle === 'Untitled') setTitle(prompt.slice(0, 80))
@@ -325,18 +336,18 @@ export function AgentPanel({ session }: { session: AgentSession }) {
     }
     if (direct) {
       push({ id: uid(), role: 'assistant', kind, status: 'written', at: Date.now(),
-        text: `${KIND_NAME[kind]} written to the document (${n} block${s}).${failure ? ` Stopped early: ${failure}` : stopped ? ' Stopped early.' : ' Review it, then press Save.'}` })
+        text: `${kind === 'edit' ? 'Content' : KIND_NAME[kind]} written to the document (${n} block${s}).${failure ? ` Stopped early: ${failure}` : stopped ? ' Stopped early.' : ' Review it, then press Save.'}` })
       setPhase('idle')
       return
     }
     const msgId = uid()
-    pendingRef.current = { how: edit ? 'replace' : 'append', msgId, snapshot, keys: scopeKeys }
+    pendingRef.current = { how: edit ? 'replace' : 'append', msgId, snapshot, keys: scopeKeys, anchorKey: edit ? undefined : anchorKey }
     push({ id: msgId, role: 'assistant', kind, status: null, at: Date.now(), peek: peekOf(target),
       text: scopeKeys
         ? `Here is the revised selection (${n} block${s}). Accept replaces only the selected part. Undo brings it back.`
         : edit
         ? `Here is the revised document (${n} block${s}). Accept replaces the current one. Undo brings it back.`
-        : `${KIND_NAME[kind]} ready (${n} block${s}). Accept adds it to the end of the document.` })
+        : `${KIND_NAME[kind]} ready (${n} block${s}). Accept adds it ${anchorKey ? 'where you wrote /agent' : 'to the end of the document'}.` })
     setPhase('review')
   }, [mainEditor, docTitle, scope, push, setTitle, markDirty, setAiState, aiAbortRef])
 
@@ -344,7 +355,7 @@ export function AgentPanel({ session }: { session: AgentSession }) {
   useEffect(() => {
     if (!loaded || !session.run || startedRef.current) return
     startedRef.current = true
-    void send(session.run.kind, session.run.prompt, session.run.allowEmpty, session.run.singleBlock, session.run.sources)
+    void send(session.run.kind, session.run.prompt, session.run.allowEmpty, session.run.singleBlock, session.run.sources, session.run.anchorKey)
   }, [loaded, session.run, send])
 
   function accept() {
@@ -370,6 +381,26 @@ export function AgentPanel({ session }: { session: AgentSession }) {
         for (const n of old) n.remove()
       }, { discrete: true, tag: ['skip-dom-selection', 'skip-scroll-into-view'] })
       setScope(null)
+    } else if (pending.how === 'append' && pending.anchorKey && mainEditor.getEditorState().read(() => $getNodeByKey(pending.anchorKey!) !== null)) {
+      // Started from a "/agent" line: the result goes right where that line was, not at the end.
+      // The preview ends with an empty paragraph meant for typing; here the line's own paragraph serves.
+      const last = nodes[nodes.length - 1] as { type: string; children?: unknown[] } | undefined
+      if (last && last.type === 'paragraph' && !last.children?.length) nodes = nodes.slice(0, -1)
+      mainEditor.update(() => {
+        const anchor = $getNodeByKey(pending.anchorKey!)
+        if (!anchor) return
+        let tail: LexicalNode = anchor
+        for (const json of nodes) {
+          try {
+            const node = $parseSerializedNode(json)
+            tail.insertAfter(node)
+            tail = node
+          } catch { /* a block that can't be rebuilt is left out */ }
+        }
+        // Something to keep typing in below the new content.
+        if (!tail.getNextSibling()) tail.insertAfter($createParagraphNode())
+        if (tail !== anchor && $isParagraphNode(anchor) && anchor.getTextContent() === '') anchor.remove()
+      }, { discrete: true, tag: ['skip-dom-selection', 'skip-scroll-into-view'] })
     } else {
       mainEditor.update(() => {
         const root = $getRoot()

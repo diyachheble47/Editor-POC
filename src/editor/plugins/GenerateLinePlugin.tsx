@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Sparkles } from 'lucide-react'
+import { BlockIcon, rowIconKey } from '../blockIcons'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import {
   $createParagraphNode,
@@ -42,7 +44,8 @@ import type { LexicalEditor } from 'lexical'
 
 // The command alone ("/agent") counts too, so the choices show as soon as it is typed.
 const LINE = /^\s*\/(generate|agent)(?:\s|$)(.*)$/i
-const TOP = 5 // chips shown before "+N more"
+/** A second command typed after the first one: it replaces it. */
+const SWITCH = /^\s*\/(generate|agent)(?:\s(.*))?$/i
 
 // Most used first, so the five shown by default are the ones teachers reach for.
 const ORDER = ['Quiz', 'Table', 'Circuit', 'Graph', 'Drawing']
@@ -54,7 +57,7 @@ type Cmd = 'generate' | 'agent'
 type AgentKind = 'workbook' | 'lesson' | 'lesson_plan'
 
 /** Something the chips offer: one block type (generate) or one kind of whole document (agent). */
-export interface Item { label: string; desc?: string; choice?: GenerateChoice; kind?: AgentKind }
+export interface Item { label: string; desc?: string; choice?: GenerateChoice; kind?: AgentKind; /** A list row that writes this item from a file the teacher chooses. */ fromFileOf?: Item }
 const ITEMS: Record<Cmd, Item[]> = {
   generate: CHOICES.map(choice => ({ label: choice.label, choice })),
   agent: [
@@ -63,7 +66,28 @@ const ITEMS: Record<Cmd, Item[]> = {
     { label: 'Lesson plan', kind: 'lesson_plan', desc: 'A timed plan with objectives, activities and homework' },
   ],
 }
+/** Shown after the three kinds in the /agent list, in muted text: the same documents, written from a file. */
+const FILE_ITEMS: Item[] = ITEMS.agent.map(it => ({ label: `${it.label} from a file`, desc: 'Choose a PDF, DOCX, TXT or MD', fromFileOf: it }))
 const nameOf = (c: Item) => c.label.toLowerCase()
+
+// After "/agent workbook" the line offers a sentence with blanks to fill in (Tab moves between them).
+type TemplatePart = string | { hint: string }
+const BASE_TEMPLATE: TemplatePart[] = ['on', { hint: 'e.g. Photosynthesis' }, 'for', { hint: 'e.g. Class 8' }, 'students']
+const TEMPLATES: Record<AgentKind, TemplatePart[]> = {
+  workbook: BASE_TEMPLATE,
+  lesson: BASE_TEMPLATE,
+  lesson_plan: [...BASE_TEMPLATE, 'for', { hint: 'e.g. 45 minutes' }],
+}
+
+/** The request the AI is given, from the blanks that were filled (only the topic is required). */
+export function composeAgentPrompt(kind: AgentKind, values: string[], extra: string): string {
+  const [topic = '', who = '', length = ''] = values.map(v => v.trim())
+  let out = topic
+  if (who) out += ` for ${who} students`
+  if (kind === 'lesson_plan' && length) out += `, ${length} long`
+  const more = extra.trim()
+  return more ? `${out}. ${more}` : out
+}
 
 // Variants offered as grey text after "<type> for ".
 const VARIANTS: Record<string, string[]> = {
@@ -73,6 +97,21 @@ const VARIANTS: Record<string, string[]> = {
   graph: ['linear', 'quadratic'],
   chart: ['bar chart', 'pie chart'],
 }
+
+// Two ways to ask /agent for a document, kept side by side so they can be compared:
+//   'blanks'  after the type, a sentence with blanks to fill in (Tab moves between them)
+//   'ghost'   after the type, the teacher just types the topic and grey text suggests the rest, "on the go"
+export type AgentStyle = 'blanks' | 'ghost'
+const STYLE_KEY = 'editor-poc:agent-style'
+export function loadAgentStyle(): AgentStyle {
+  try { return localStorage.getItem(STYLE_KEY) === 'ghost' ? 'ghost' : 'blanks' } catch { return 'blanks' }
+}
+function saveAgentStyle(style: AgentStyle) {
+  try { localStorage.setItem(STYLE_KEY, style) } catch { /* private window: the choice just is not remembered */ }
+}
+// Read by parse() and ghostFor(); set from the plugin each render. The default keeps them as they were.
+let looseAgent = false
+export function setLooseAgent(on: boolean) { looseAgent = on }
 
 export interface Parsed { choice: Item | null; topic: string | null }
 
@@ -87,13 +126,18 @@ export function parse(rest: string, cmd: Cmd = 'generate'): Parsed {
     if (lower === n || lower.startsWith(n + ' ')) {
       const tail = s.slice(n.length)
       const m = tail.match(/^\s+for(?:\s+([\s\S]*))?$/i)
-      return { choice: c, topic: m ? (m[1] ?? '') : null }
+      if (m) return { choice: c, topic: m[1] ?? '' }
+      // "ghost" style: whatever follows the type is the topic ("workbook circuits"), unless it starts a "from <file>" request.
+      const bare = tail.trim()
+      if (looseAgent && cmd === 'agent' && bare && !/^from(\s|$)/i.test(bare)) return { choice: c, topic: bare }
+      return { choice: c, topic: null }
     }
   }
   return { choice: null, topic: null }
 }
 
-export interface Ghost { text: string; full: string | null; count: number }
+/** `blank`: the part of `text` that is shown underlined (a value to edit); `select`: the same part inside `full`. */
+export interface Ghost { text: string; full: string | null; count: number; blank?: [number, number]; select?: [number, number] }
 
 const FILE_PHRASE = 'from a file'
 
@@ -120,9 +164,42 @@ function agentGhost(choice: Item, rest: string, variantIdx: number): Ghost | nul
   return { ...options[variantIdx % options.length], count: options.length }
 }
 
+/** Who the suggestion after a topic is written for. The class is the part the teacher is likely to change. */
+const CLASSES = ['Class 8', 'Class 4', 'Class 6', 'Class 10']
+const hasFor = (t: string) => /\sfor\s/i.test(` ${t} `)
+
+/** "ghost" style, after "workbook for ": a hint for the topic, then " for Class 8 students" once there is one. */
+function agentGhostLoose(choice: Item, rest: string, variantIdx: number): Ghost | null {
+  const name = nameOf(choice)
+  const tail = rest.replace(/^\s+/, '').slice(name.length).trim()
+  const gap = /\s$/.test(rest) ? '' : ' '
+  const topic = tail.replace(/^for\b\s*/i, '')
+  if (!topic) return { text: `${gap}e.g. Photosynthesis`, full: null, count: 1 }
+  if (hasFor(topic)) return null
+  const partial = /\s(f|fo|for)$/i.exec(tail)
+  const base = partial ? tail.slice(0, partial.index) : tail
+  const typed = partial ? partial[1].toLowerCase() : ''
+  const options = CLASSES
+    .map(c => ({ c, v: choice.kind === 'lesson_plan' ? `for ${c} students, 45 minutes` : `for ${c} students` }))
+    .filter(o => o.v.startsWith(typed))
+  if (!options.length) return null
+  const { c, v } = options[variantIdx % options.length]
+  const text = (partial ? '' : gap) + v.slice(typed.length)
+  const inV = v.indexOf(c)
+  const full = `${name} ${base} ${v}`
+  const fromText = text.length - (v.length - inV)
+  const fromFull = full.length - (v.length - inV)
+  return {
+    text, full, count: options.length,
+    blank: [fromText, fromText + c.length],
+    select: [fromFull, fromFull + c.length],
+  }
+}
+
 export function ghostFor(rest: string, variantIdx: number, cmd: Cmd = 'generate'): Ghost | null {
   const { choice, topic } = parse(rest, cmd)
   if (!choice) return null
+  if (looseAgent && cmd === 'agent') return agentGhostLoose(choice, rest, variantIdx)
   if (topic === null) {
     if (cmd === 'agent') return agentGhost(choice, rest, variantIdx)
     return { text: /\s$/.test(rest) ? 'for ' : ' for', full: `${nameOf(choice)} for `, count: 1 }
@@ -136,7 +213,13 @@ export function ghostFor(rest: string, variantIdx: number, cmd: Cmd = 'generate'
   return null
 }
 
-interface Active { key: string; rest: string; cmd: Cmd }
+/** `atEnd`: the caret is at the end of the line (nothing is written after it). */
+interface Active { key: string; rest: string; cmd: Cmd; atEnd: boolean }
+/** The grey suggestion for the line, only while the caret is at its end. */
+function ghostAt(a: Active, variantIdx: number): Ghost | null {
+  return a.atEnd ? ghostFor(a.rest, variantIdx, a.cmd) : null
+}
+
 interface Review { key: string; choice: GenerateChoice; topic: string }
 
 export function GenerateLinePlugin() {
@@ -144,9 +227,10 @@ export function GenerateLinePlugin() {
   const { update: updateUI } = useEditorUI()
   const { activeDocId, setAiState, aiAbortRef } = useDocument()
   const [active, setActive] = useState<Active | null>(null)
+  const [agentStyle, setAgentStyleState] = useState<AgentStyle>(loadAgentStyle)
+  setLooseAgent(agentStyle === 'ghost')
   const [idx, setIdx] = useState(0)
   const [variantIdx, setVariantIdx] = useState(0)
-  const [expanded, setExpanded] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   // The line whose generation is running: shown as "Generating …" on that empty line.
   const [busy, setBusy] = useState<{ key: string; label: string; topic: string } | null>(null)
@@ -156,13 +240,13 @@ export function GenerateLinePlugin() {
   const [reading, setReading] = useState<string | null>(null)
   const [files, setFiles] = useState<readonly SourceFile[]>(() => [...knownSources()])
   const [fileProblem, setFileProblem] = useState<{ text: string; rest: string } | null>(null)
-  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; caretX: number; caretY: number; caretH: number } | null>(null)
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; caretX: number; caretY: number; caretH: number; lineLeft: number; lineTop: number; lineH: number; font: string; cmdLeft: number; cmdWidth: number; shift: number } | null>(null)
 
   // Command handlers are registered once, so they read the latest state from here.
   const reviewRef = useRef<Review | null>(null)
   reviewRef.current = review
-  const live = useRef({ active, idx, variantIdx, expanded, dismissed })
-  live.current = { active, idx, variantIdx, expanded, dismissed }
+  const live = useRef({ active, idx, variantIdx, dismissed })
+  live.current = { active, idx, variantIdx, dismissed }
   const hooks = useRef({ activeDocId, setAiState, aiAbortRef, updateUI })
   hooks.current = { activeDocId, setAiState, aiAbortRef, updateUI }
 
@@ -170,25 +254,38 @@ export function GenerateLinePlugin() {
   const typed = (active?.rest ?? '').trim().toLowerCase()
   const cmd: Cmd = active?.cmd ?? 'generate'
   const parsed = parse(active?.rest ?? '', cmd)
-  const matches = ITEMS[cmd].filter(c => !typed || nameOf(c).includes(typed))
-  const hasMore = !typed && matches.length > TOP
-  const shown = hasMore && !expanded ? matches.slice(0, TOP) : matches
-  // Chips are listed while no complete type is on the line; after that the grey text takes over.
+  const matches = [...ITEMS[cmd], ...(cmd === 'agent' ? FILE_ITEMS : [])].filter(c => !typed || nameOf(c).includes(typed))
+  const shown = matches
+  // The options are listed while no complete type is on the line; after that the grey text takes over.
   const chipsVisible = !!active && !dismissed && !parsed.choice && shown.length > 0
-  const navCount = shown.length + (hasMore ? 1 : 0)
-  const toggleIdx = hasMore ? shown.length : -1
-  const liveNav = useRef({ shown, navCount, toggleIdx, chipsVisible })
-  liveNav.current = { shown, navCount, toggleIdx, chipsVisible }
+  const navCount = shown.length
+  const liveNav = useRef({ shown, navCount, chipsVisible })
+  liveNav.current = { shown, navCount, chipsVisible }
 
-  const ghost = active ? ghostFor(active.rest, variantIdx, cmd) : null
+  // "/agent workbook " with nothing after it yet: the fill-in sentence is shown.
+  const tplKind = active && !dismissed && agentStyle === 'blanks' && cmd === 'agent' && parsed.choice?.kind && parsed.topic === null
+    && !fileRequest(active.rest) && typed === nameOf(parsed.choice) ? parsed.choice.kind : null
+  const liveTpl = useRef<boolean>(false)
+  liveTpl.current = !!tplKind
+  // Set when an option was just picked: the first blank then takes the keyboard.
+  const focusBlanks = useRef(false)
+  // The grey suggestion is drawn at the caret, so it is left out while text follows the caret (it would cover it).
+  const ghost = active && active.atEnd && !tplKind ? ghostFor(active.rest, variantIdx, cmd) : null
 
-  const setLine = useCallback((key: string, command: Cmd, text: string) => {
+  // `select`: a part of `text` to leave selected, so the next typing replaces it (the underlined class).
+  const setLine = useCallback((key: string, command: Cmd, text: string, select?: [number, number]) => {
     editor.update(() => {
       const p = $getNodeByKey(key)
       if (!$isParagraphNode(p)) return
       p.clear()
-      p.append($createTextNode(`/${command} ${text}`))
-      p.selectEnd()
+      const node = $createTextNode(`/${command} ${text}`)
+      p.append(node)
+      if (select) {
+        const base = command.length + 2
+        node.select(base + select[0], base + select[1])
+      } else {
+        p.selectEnd()
+      }
     })
   }, [editor])
 
@@ -198,35 +295,118 @@ export function GenerateLinePlugin() {
       const next = editorState.read((): Active | null => {
         if (!editor.isEditable()) return null
         const sel = $getSelection()
-        if (!$isRangeSelection(sel) || !sel.isCollapsed()) return null
+        if (!$isRangeSelection(sel)) return null
         const top = $getRealTopLevelAncestor(sel.anchor.getNode())
         if (!top || !$isParagraphNode(top)) return null
+        // A selected part of the line (the class after Tab) still belongs to the line; a selection across blocks does not.
+        if (!sel.isCollapsed() && $getRealTopLevelAncestor(sel.focus.getNode()) !== top) return null
         const m = LINE.exec(top.getTextContent())
-        return m ? { key: top.getKey(), rest: m[2], cmd: m[1].toLowerCase() as Cmd } : null
+        // "/agent /generate": the newest command wins, so a line can switch from one mode to the other.
+        const sw = m && SWITCH.exec(m[2])
+        if (m && sw) {
+          const key = top.getKey()
+          queueMicrotask(() => setLine(key, sw[1].toLowerCase() as Cmd, sw[2] ?? ''))
+          return null
+        }
+        if (!m) return null
+        const anchor = sel.anchor
+        const text = top.getTextContent()
+        // Offset of the caret from the start of the line, then compared with the line's length.
+        let before = 0
+        for (const child of top.getAllTextNodes()) {
+          if (child.is(anchor.getNode())) { before += anchor.offset; break }
+          before += child.getTextContentSize()
+        }
+        return { key: top.getKey(), rest: m[2], cmd: m[1].toLowerCase() as Cmd, atEnd: sel.isCollapsed() && before >= text.length }
       })
-      setActive(prev => (prev?.key === next?.key && prev?.rest === next?.rest && prev?.cmd === next?.cmd ? prev : next))
+      // Focus moved into the fill-in blanks: the line is still the one being worked on.
+      if (!next && document.activeElement?.closest('.gl-tpl')) return
+      setActive(prev => (prev?.key === next?.key && prev?.rest === next?.rest && prev?.cmd === next?.cmd && prev?.atEnd === next?.atEnd ? prev : next))
     })
-  }, [editor])
+  }, [editor, setLine])
 
   // Typing resets the highlight and brings a dismissed panel back.
   useEffect(() => { setIdx(0); setVariantIdx(0); setDismissed(false) }, [active?.rest, active?.key])
-  useEffect(() => { if (!active) setExpanded(false) }, [active])
+  // The line is marked while it is a prompt line, so the block controls leave its gutter to the mode badge.
+  const activeKey = active?.key
+  useEffect(() => {
+    if (!activeKey) return
+    const el = editor.getElementByKey(activeKey)
+    el?.classList.add('gl-line')
+    return () => { el?.classList.remove('gl-line') }
+  }, [activeKey, editor])
+  // Keep the highlighted option in view when the list is long.
+  const menuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    menuRef.current?.querySelector('.gl-opt.on')?.scrollIntoView({ block: 'nearest' })
+  }, [idx, chipsVisible])
 
+  // The line whose command word has already glided into the gutter (it does that once).
+  const shiftedKey = useRef<string | null>(null)
   // Place the panel under the line and the grey text at the caret.
   useEffect(() => {
-    if (!active) { setPos(null); return }
+    if (!active) { setPos(null); shiftedKey.current = null; return }
+    // A measure already queued for the previous line must not run after this effect is gone.
+    let stale = false
     const measure = () => {
+      if (stale) return
       const el = editor.getElementByKey(active.key)
       if (!el) { setPos(null); return }
+      // "/agent " is pushed left out of the line into the gutter (see-through there) and its word is written in its place,
+      // so the line itself reads from the topic on. Done first: every position below depends on it.
+      const firstText = textNodes(el)[0]
+      const slash = firstText ? firstText.data.indexOf('/') : -1
+      const hl = commandHighlights()
+      let cmdLeft = 0, cmdWidth = 0, shift = 0
+      if (hl && firstText && slash >= 0) {
+        const typedCmd = /^\/(generate|agent)/i.exec(firstText.data.slice(slash))
+        const end = slash + (typedCmd ? typedCmd[0].length : 1 + active.cmd.length)
+        const word = document.createRange()
+        word.setStart(firstText, slash)
+        word.setEnd(firstText, end)
+        const whole = document.createRange()
+        whole.setStart(firstText, slash)
+        whole.setEnd(firstText, /\s/.test(firstText.data[end] ?? '') ? end + 1 : end)
+        shift = whole.getBoundingClientRect().width
+        el.style.textIndent = `-${shift}px`
+        // The first time this line becomes a prompt line, the text glides into the gutter instead of jumping.
+        if (shiftedKey.current !== active.key) {
+          shiftedKey.current = active.key
+          if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            el.animate([{ textIndent: '0px' }, { textIndent: `-${shift}px` }], { duration: 280, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' })
+              .onfinish = () => requestAnimationFrame(measure)
+          }
+        }
+        const b = word.getBoundingClientRect()
+        if (b.width) { cmdLeft = b.left; cmdWidth = b.width; hl.set('gl-cmd', hl.make(word)) }
+      } else {
+        el.style.textIndent = ''
+        shiftedKey.current = null
+      }
       const r = el.getBoundingClientRect()
       const sel = window.getSelection()
       let cx = r.left, cy = r.top, ch = r.height
-      if (sel && sel.rangeCount) {
-        const range = sel.getRangeAt(0).cloneRange()
+      // With the keyboard in the fill-in blanks the selection is not in the line: use the end of its text.
+      const range = sel && sel.rangeCount && sel.anchorNode && el.contains(sel.anchorNode)
+        ? sel.getRangeAt(0).cloneRange()
+        : null
+      if (range) {
         range.collapse(false)
         const rects = range.getClientRects()
         const cr = rects.length ? rects[rects.length - 1] : null
         if (cr && cr.height) { cx = cr.right; cy = cr.top; ch = cr.height }
+      } else {
+        // The right edge of the last character (an empty collapsed range has no box to measure).
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+        let last: Text | null = null
+        while (walker.nextNode()) last = walker.currentNode as Text
+        if (last && last.length > 0) {
+          const r2 = document.createRange()
+          r2.setStart(last, last.length - 1)
+          r2.setEnd(last, last.length)
+          const cr = r2.getBoundingClientRect()
+          if (cr.height) { cx = cr.right; cy = cr.top; ch = cr.height }
+        }
       }
       // Under the line; above it when the line is near the bottom of the screen.
       const below = window.innerHeight - r.bottom
@@ -235,6 +415,7 @@ export function GenerateLinePlugin() {
         left: Math.max(8, Math.min(r.left, window.innerWidth - 480)),
         ...(flip ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }),
         caretX: cx, caretY: cy, caretH: ch,
+        lineLeft: r.left, lineTop: r.top, lineH: r.height, font: getComputedStyle(el).font, cmdLeft, cmdWidth, shift,
       })
     }
     measure()
@@ -242,17 +423,21 @@ export function GenerateLinePlugin() {
     window.addEventListener('scroll', measure, true)
     // Braces matter: Lexical treats anything an update listener returns as its cleanup function.
     const off = editor.registerUpdateListener(() => { requestAnimationFrame(measure) })
-    return () => { window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); off() }
+    const lineEl = editor.getElementByKey(active.key)
+    return () => { stale = true; if (lineEl) lineEl.style.textIndent = ''; window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); off(); commandHighlights()?.delete('gl-cmd') }
   }, [active, editor])
 
+  // pickFile is defined further down; the list rows call it through here.
+  const pickFileRef = useRef<(a: Active, item: Item) => Promise<void>>(async () => {})
   const pick = useCallback((i: number) => {
-    const { shown: list, toggleIdx: ti } = liveNav.current
+    const { shown: list } = liveNav.current
     const a = live.current.active
     if (!a) return
-    if (i === ti) { setExpanded(e => !e); return }
     const c = list[i]
-    // /agent leaves the line as "workbook " so the grey suggestions ("for", "from a file") stay a choice.
-    if (c) setLine(a.key, a.cmd, a.cmd === 'agent' ? `${nameOf(c)} ` : `${nameOf(c)} for `)
+    // The line stays "quiz " (or "workbook "): "for" (and "from a file" for /agent) are grey suggestions
+    // to accept with Tab, not text written for the teacher.
+    if (c?.fromFileOf) { void pickFileRef.current(a, c.fromFileOf); return }
+    if (c) { focusBlanks.current = a.cmd === 'agent'; setLine(a.key, a.cmd, looseAgent && a.cmd === 'agent' ? `${nameOf(c)} for ` : `${nameOf(c)} `) }
   }, [setLine])
 
   // Writes one block on the empty line `anchorKey`, then leaves it up for review.
@@ -281,7 +466,7 @@ export function GenerateLinePlugin() {
     const h = hooks.current
     if (item.kind) {
       // Agent: the side panel writes the whole document and asks for Accept before anything lands.
-      h.updateUI({ agent: { id: Date.now(), run: { kind: item.kind, prompt: topic, sources } }, activeMath: null, activeModel3d: null })
+      h.updateUI({ agent: { id: Date.now(), run: { kind: item.kind, prompt: topic, sources, anchorKey: a.key } }, activeMath: null, activeModel3d: null })
       return
     }
     if (item.choice) startGenerate(a.key, item.choice, topic)
@@ -330,13 +515,15 @@ export function GenerateLinePlugin() {
     }
   }, [editor, setLine])
 
+  pickFileRef.current = pickFile
+
   const submit = useCallback(() => {
     const { active: a, variantIdx: vi } = live.current
     if (!a || reading) return
     const p = parse(a.rest, a.cmd)
     if (!p.choice) return
     const fromFile = a.cmd === 'agent' ? fileRequest(a.rest) : null
-    const wantsFile = fromFile ?? (ghostFor(a.rest, vi, a.cmd)?.full?.endsWith(FILE_PHRASE) && !p.topic ? { choice: p.choice, from: '' } : null)
+    const wantsFile = fromFile ?? (ghostAt(a, vi)?.full?.endsWith(FILE_PHRASE) && !p.topic ? { choice: p.choice, from: '' } : null)
     if (wantsFile) {
       const found = matchSource(wantsFile.from)
       if (found) {
@@ -352,7 +539,7 @@ export function GenerateLinePlugin() {
     const topic = (p.topic ?? '').trim()
     if (topic) { run(a, p.choice, topic); return }
     // A bare type is not enough: use the grey suggestion if there is one, otherwise ask.
-    const g = ghostFor(a.rest, vi, a.cmd)
+    const g = ghostAt(a, vi)
     if (g?.full) { const t = parse(g.full, a.cmd).topic?.trim(); if (t) { run(a, p.choice, t); return } }
     setLine(a.key, a.cmd, `${nameOf(p.choice)} for `)
   }, [run, setLine, pickFile, reading])
@@ -367,16 +554,22 @@ export function GenerateLinePlugin() {
         e?.preventDefault()
         const { chipsVisible: chips } = liveNav.current
         if (chips) pick(live.current.idx)
+        else if (liveTpl.current) document.querySelector<HTMLInputElement>('.gl-tpl input')?.focus()
         else submit()
         return true
       }), COMMAND_PRIORITY_CRITICAL),
       editor.registerCommand(KEY_TAB_COMMAND, when(e => {
         const a = live.current.active
         if (!a) return false
-        const g = ghostFor(a.rest, live.current.variantIdx, a.cmd)
+        if (liveTpl.current) {
+          e?.preventDefault()
+          document.querySelector<HTMLInputElement>('.gl-tpl input')?.focus()
+          return true
+        }
+        const g = ghostAt(a, live.current.variantIdx)
         if (g?.full) {
           e?.preventDefault()
-          setLine(a.key, a.cmd, g.full)
+          setLine(a.key, a.cmd, g.full, g.select)
           const choice = parse(g.full, a.cmd).choice
           if (g.full.endsWith(FILE_PHRASE) && choice) void pickFile(a, choice)
           return true
@@ -393,7 +586,7 @@ export function GenerateLinePlugin() {
     function step(dir: 1 | -1, e: KeyboardEvent | null): boolean {
       const a = live.current.active
       if (!a) return false
-      const g = ghostFor(a.rest, live.current.variantIdx, a.cmd)
+      const g = ghostAt(a, live.current.variantIdx)
       if (g && g.count > 1) {
         e?.preventDefault()
         setVariantIdx(v => (v + dir + g.count) % g.count)
@@ -435,13 +628,40 @@ export function GenerateLinePlugin() {
     <>
       {busy && <BusyLine editor={editor} busy={busy} />}
       {reviewBar}
+      {pos.cmdWidth > 0 && (
+        <span className={`gl-cmd-chip ${cmd}`} style={{ left: pos.cmdLeft, top: pos.lineTop + pos.lineH / 2, font: pos.font, '--shift': `${pos.shift}px` } as React.CSSProperties} aria-hidden="true">
+          <Sparkles className="gl-cmd-icon" size={17} strokeWidth={1.8} aria-hidden="true" />
+          {cmd}
+        </span>
+      )}
+      {tplKind && parsed.choice && (
+        <AgentTemplate
+          key={`${active.key}:${tplKind}`}
+          kind={tplKind}
+          pos={pos}
+          autoFocus={focusBlanks.current}
+          onRun={prompt => run(active, parsed.choice!, prompt)}
+          onBack={() => {
+            editor.update(() => { const p = $getNodeByKey(active.key); if ($isParagraphNode(p)) p.selectEnd() })
+            editor.focus()
+          }}
+        />
+      )}
       {ghost && (
         <span
           className="slash-ghost gl-ghost"
           style={{ left: pos.caretX + 2, top: pos.caretY, height: pos.caretH, lineHeight: `${pos.caretH}px` }}
           aria-hidden="true"
         >
-          {ghost.text}
+          {ghost.blank
+            ? (
+              <>
+                {ghost.text.slice(0, ghost.blank[0])}
+                <span className="gl-ghost-blank">{ghost.text.slice(ghost.blank[0], ghost.blank[1])}</span>
+                {ghost.text.slice(ghost.blank[1])}
+              </>
+            )
+            : ghost.text}
           {ghost.count > 1 && <span className="gl-ghost-count">  ↑↓ {ghost.count} options · Tab</span>}
         </span>
       )}
@@ -456,33 +676,38 @@ export function GenerateLinePlugin() {
           {chipsVisible && (
             <>
               <div className="gl-label">{cmd === 'agent' ? 'Write a whole document' : 'Add one block'}</div>
-              <div className="gl-chips">
+              <div className="gl-menu" ref={menuRef}>
                 {shown.map((c, i) => (
                   <button
                     key={c.label}
                     type="button"
                     role="option"
                     aria-selected={i === idx}
-                    className={`gl-chip${i === idx ? ' on' : ''}`}
+                    className={`gl-opt${i === idx ? ' on' : ''}${c.fromFileOf ? ' file' : ''}`}
                     onMouseMove={() => { if (i !== idx) setIdx(i) }}
                     onClick={() => pick(i)}
                   >
-                    {c.label}
+                    <span className="gl-opt-icon"><BlockIcon blockKey={rowIconKey(c.label, !!c.fromFileOf)} size={16} /></span>
+                    <span className="gl-opt-text">
+                      <span className="gl-opt-name">{c.label}</span>
+                      {c.desc && <span className="gl-opt-desc">{c.desc}</span>}
+                    </span>
                   </button>
                 ))}
-                {hasMore && (
+              </div>
+              <div className="gl-keys">
+                <span><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> pick · <kbd>Esc</kbd> hide</span>
+                {cmd === 'agent' && (
                   <button
                     type="button"
-                    className={`gl-chip more${idx === toggleIdx ? ' on' : ''}`}
-                    onMouseMove={() => { if (idx !== toggleIdx) setIdx(toggleIdx) }}
-                    onClick={() => setExpanded(e => !e)}
+                    className="gl-style"
+                    title="Compare the two ways of asking: blanks to fill in, or grey suggestions as you type"
+                    onClick={() => setAgentStyleState(prev => { const next = prev === 'blanks' ? 'ghost' : 'blanks'; saveAgentStyle(next); return next })}
                   >
-                    {expanded ? 'show less ↑' : `+${matches.length - TOP} more ↓`}
+                    Style: {agentStyle === 'blanks' ? 'Blanks' : 'On the go'} ⇄
                   </button>
                 )}
               </div>
-              {shown[idx]?.desc && <div className="gl-desc">{shown[idx].desc}</div>}
-              <div className="gl-keys"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> pick · <kbd>Esc</kbd> hide</div>
             </>
           )}
           {fileChips && fromFile && (
@@ -509,6 +734,100 @@ export function GenerateLinePlugin() {
     </>,
     document.body,
   )
+}
+
+/**
+ * The fill-in sentence after "/agent workbook": blanks with grey hints that Tab moves between,
+ * a last box for anything else, and an Enter button. Enter in any box runs it (the topic is needed).
+ */
+function AgentTemplate({ kind, pos, autoFocus, onRun, onBack }: {
+  kind: AgentKind
+  pos: { caretX: number; caretY: number; caretH: number; font: string }
+  autoFocus: boolean
+  onRun: (prompt: string) => void
+  onBack: () => void
+}) {
+  const parts = TEMPLATES[kind]
+  const blanks = parts.filter((p): p is { hint: string } => typeof p !== 'string')
+  const [values, setValues] = useState<string[]>(() => blanks.map(() => ''))
+  const [extra, setExtra] = useState('')
+  const root = useRef<HTMLDivElement>(null)
+  const ready = values[0].trim().length > 0
+
+  useEffect(() => {
+    if (autoFocus) root.current?.querySelector('input')?.focus()
+  }, [autoFocus])
+
+  const run = () => {
+    if (!ready) { root.current?.querySelector('input')?.focus(); return }
+    onRun(composeAgentPrompt(kind, values, extra))
+  }
+  const onKey = (i: number, empty: boolean) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation() // the editor must not see these keys
+    if (e.key === 'Enter') { e.preventDefault(); run() }
+    else if (e.key === 'Escape') { e.preventDefault(); onBack() }
+    else if (e.key === 'Backspace' && empty && i === 0) { e.preventDefault(); onBack() }
+  }
+  let b = -1
+  return (
+    <div
+      ref={root}
+      className="gl-tpl"
+      style={{ left: pos.caretX + 6, top: pos.caretY, height: pos.caretH, font: pos.font }}
+    >
+      {parts.map((part, k) => {
+        if (typeof part === 'string') return <span key={k} className="gl-tpl-word">{part}</span>
+        const i = ++b
+        return (
+          <input
+            key={k}
+            className="gl-tpl-field"
+            value={values[i]}
+            placeholder={part.hint}
+            size={Math.max(part.hint.length, values[i].length + 1)}
+            maxLength={80}
+            spellCheck={false}
+            aria-label={part.hint.replace('e.g. ', 'For example ')}
+            onChange={e => setValues(v => v.map((x, n) => (n === i ? e.target.value : x)))}
+            onKeyDown={onKey(i, values[i] === '')}
+          />
+        )
+      })}
+      <input
+        className="gl-tpl-field gl-tpl-extra"
+        value={extra}
+        placeholder="anything else…"
+        size={Math.max(14, extra.length + 1)}
+        maxLength={300}
+        spellCheck={false}
+        aria-label="Anything else to include"
+        onChange={e => setExtra(e.target.value)}
+        onKeyDown={onKey(blanks.length, false)}
+      />
+      {ready && (
+        <button type="button" className="gl-tpl-enter" onClick={run} title="Run (Enter)" aria-label="Run">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 5v7a3 3 0 0 1-3 3H5" /><path d="m9 10-5 5 5 5" />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
+}
+
+function textNodes(root: HTMLElement): Text[] {
+  const out: Text[] = []
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  while (walker.nextNode()) out.push(walker.currentNode as Text)
+  return out
+}
+
+/** The browser's CSS Custom Highlight registry (Chrome, Edge, Safari, Firefox 140+); null where missing. */
+function commandHighlights(): { set(name: string, h: unknown): void; delete(name: string): void; make(r: Range): unknown } | null {
+  const reg = (CSS as unknown as { highlights?: { set(n: string, h: unknown): void; delete(n: string): void } }).highlights
+  const Ctor = (globalThis as unknown as { Highlight?: new (r: Range) => unknown }).Highlight
+  if (!reg || !Ctor) return null
+  return { set: (n, h) => reg.set(n, h), delete: n => reg.delete(n), make: r => new Ctor(r) }
 }
 
 /** Brings the new block into view and flashes it, so it is never left below the fold. */

@@ -43,7 +43,7 @@ export type BlockType =
 /** The /agent panel. `run` starts a generation as soon as it opens (from the /agent dropdown). */
 export interface AgentSession {
   id: number
-  run?: { kind: 'workbook' | 'lesson_plan' | 'lesson' | 'edit'; prompt: string; allowEmpty?: boolean; singleBlock?: boolean; sources?: { name: string; text: string }[] }
+  run?: { kind: 'workbook' | 'lesson_plan' | 'lesson' | 'edit'; prompt: string; allowEmpty?: boolean; singleBlock?: boolean; sources?: { name: string; text: string }[]; /** The empty line the prompt was on: the result is added right after it. */ anchorKey?: string }
   /** Opened from selected text: the AI edits only these top-level blocks. */
   scope?: { keys: string[]; text: string }
 }
